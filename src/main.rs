@@ -180,7 +180,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .filter_level(loglevel)
         .format_timestamp_secs()
         .init();
-    info!("Starting up pwr-server...");
+    info!("Starting up console-server...");
     info!("Git branch: {}", env!("GIT_BRANCH"));
     info!("Git commit: {}", env!("GIT_COMMIT"));
     info!("Source timestamp: {}", env!("SOURCE_TIMESTAMP"));
