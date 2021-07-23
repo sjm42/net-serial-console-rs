@@ -5,8 +5,8 @@ use serial::SerialPort;
 use std::{error::Error, io::Read, net::SocketAddr, sync::Arc, time};
 use structopt::StructOpt;
 use tokio::io::{self, AsyncWriteExt};
-use tokio::{net, task};
 use tokio::sync::{broadcast, RwLock};
+use tokio::{net, task};
 
 const BUFSZ: usize = 1024;
 const CHANSZ: usize = 16;
@@ -137,7 +137,7 @@ async fn handle_serial(
                     tx.send(s.to_string()).unwrap();
                 }
             }
-            Err(e) if e.kind() == io::ErrorKind::TimedOut => { }
+            Err(e) if e.kind() == io::ErrorKind::TimedOut => {}
             Err(e) => {
                 info!("Error {:?}", e);
                 return Err(e);
@@ -161,7 +161,7 @@ async fn handle_client(
 
     loop {
         let msg = rx.recv().await.unwrap();
-        sock.write(&msg.as_bytes()).await?;
+        sock.write(msg.as_bytes()).await?;
         sock.flush().await?;
         task::yield_now().await;
     }
