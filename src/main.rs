@@ -1,16 +1,15 @@
 // main.rs
 
-// use chrono::*;
 use log::*;
 use serial::SerialPort;
-use std::error::Error;
-use std::io;
-use std::io::Read;
-use std::time;
+use std::{error::Error, io::Read, net::SocketAddr, sync::Arc, time};
 use structopt::StructOpt;
-use tokio;
+use tokio::io::{self, AsyncWriteExt};
+use tokio::{net, task};
+use tokio::sync::{broadcast, RwLock};
 
 const BUFSZ: usize = 1024;
+const CHANSZ: usize = 16;
 
 #[derive(Debug, StructOpt)]
 pub struct GlobalServerOptions {
@@ -103,23 +102,68 @@ fn opt_stopbits(bits: u32) -> Result<serial::StopBits, serial::Error> {
     }
 }
 
-async fn handle_serial(port: &mut serial::SystemPort) -> tokio::io::Result<()> {
+async fn run_server(port: serial::SystemPort, addr: String) -> tokio::io::Result<()> {
+    let (tx, _rx) = broadcast::channel(CHANSZ);
+    let atx = Arc::new(RwLock::new(tx));
+    let ser_atx = Arc::clone(&atx);
+    tokio::spawn(async move { handle_serial(port, ser_atx).await.unwrap() });
+
+    let listener = net::TcpListener::bind(&addr).await?;
+    info!("Listening on {}", &addr);
+    loop {
+        let (sock, addr) = listener.accept().await?;
+        let client_atx = Arc::clone(&atx);
+        tokio::spawn(async move { handle_client(sock, addr, client_atx).await.unwrap() });
+        task::yield_now().await;
+    }
+}
+
+async fn handle_serial(
+    mut port: serial::SystemPort,
+    atx: Arc<RwLock<broadcast::Sender<String>>>,
+) -> tokio::io::Result<()> {
     let mut buf = [0; BUFSZ];
     info!("Starting serial read...");
     loop {
         let res = port.read(&mut buf);
         match res {
             Ok(n) => {
+                let s = String::from_utf8_lossy(&buf[0..n]);
                 // info!("Read {} bytes.", n);
                 // info!("serial: {}", String::from_utf8_lossy(&buf[0..n]));
-                eprint!("{}", String::from_utf8_lossy(&buf[0..n]));
+                eprint!("{}", &s);
+                {
+                    let tx = atx.write().await;
+                    tx.send(s.to_string()).unwrap();
+                }
             }
-            Err(e) if e.kind() == io::ErrorKind::TimedOut => {}
+            Err(e) if e.kind() == io::ErrorKind::TimedOut => { }
             Err(e) => {
                 info!("Error {:?}", e);
                 return Err(e);
             }
         }
+        task::yield_now().await;
+    }
+}
+
+async fn handle_client(
+    mut sock: net::TcpStream,
+    addr: SocketAddr,
+    atx: Arc<RwLock<broadcast::Sender<String>>>,
+) -> tokio::io::Result<()> {
+    info!("Client handler: connection from {}", addr);
+    sock.write("\n*** Hello!\n\n".as_bytes()).await?;
+    let mut rx;
+    {
+        rx = atx.write().await.subscribe();
+    }
+
+    loop {
+        let msg = rx.recv().await.unwrap();
+        sock.write(&msg.as_bytes()).await?;
+        sock.flush().await?;
+        task::yield_now().await;
     }
 }
 
@@ -158,8 +202,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         .enable_all()
         .build()?;
 
-    // let ser_task = rt.spawn();
-    rt.block_on(async move { handle_serial(&mut ser_port).await.unwrap() });
+    rt.block_on(async move {
+        run_server(ser_port, opt.listen.clone()).await.unwrap();
+    });
     rt.shutdown_timeout(time::Duration::new(5, 0));
     Ok(())
 }
