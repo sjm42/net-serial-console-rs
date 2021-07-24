@@ -2,14 +2,15 @@
 
 use log::*;
 use serial::SerialPort;
-use std::{error::Error, io::Read, net::SocketAddr, sync::Arc, time};
+use std::io::{ErrorKind, Read, Write};
+use std::{error::Error, net::SocketAddr, sync::Arc, time};
 use structopt::StructOpt;
-use tokio::io::{self, AsyncWriteExt};
-use tokio::sync::{broadcast, RwLock};
+use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
+use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio::{net, task};
 
 const BUFSZ: usize = 1024;
-const CHANSZ: usize = 16;
+const CHANSZ: usize = 256;
 
 #[derive(Debug, StructOpt)]
 pub struct GlobalServerOptions {
@@ -31,6 +32,8 @@ pub struct GlobalServerOptions {
     pub ser_parity: String,
     #[structopt(long, default_value = "1")]
     pub ser_stopb: u32,
+    #[structopt(short, long)]
+    pub write: bool,
 }
 
 fn opt_baudrate(baudrate: u32) -> Result<serial::BaudRate, serial::Error> {
@@ -102,45 +105,78 @@ fn opt_stopbits(bits: u32) -> Result<serial::StopBits, serial::Error> {
     }
 }
 
-async fn run_server(port: serial::SystemPort, addr: String) -> tokio::io::Result<()> {
-    let (tx, _rx) = broadcast::channel(CHANSZ);
-    let atx = Arc::new(RwLock::new(tx));
-    let ser_atx = Arc::clone(&atx);
-    tokio::spawn(async move { handle_serial(port, ser_atx).await.unwrap() });
+async fn run_server(port: serial::SystemPort, opt: GlobalServerOptions) -> tokio::io::Result<()> {
+    // Note: here read/write in variable naming is referring to the serial port data direction
 
-    let listener = net::TcpListener::bind(&addr).await?;
-    info!("Listening on {}", &addr);
+    // create a broadcast channel for sending serial msgs to all clients
+    let (read_tx, _read_rx) = broadcast::channel(CHANSZ);
+    // ...and put the channel sender inside Arc+RwLock to be able to move it
+    let read_atx = Arc::new(RwLock::new(read_tx));
+
+    // create an mpsc channel for receiving serial port input from any client
+    // mpsc = multi-producer, single consumer queue
+    let (write_tx, write_rx) = mpsc::channel(CHANSZ);
+    // ...and put the channel sender inside Arc+RwLock to be able to move it
+    let write_atx = Arc::new(RwLock::new(write_tx));
+
+    // create channel clone for serial handler
+    let ser_read_atx = Arc::clone(&read_atx);
+    // create the serial handler itself
+    tokio::spawn(async move { handle_serial(port, ser_read_atx, write_rx).await.unwrap() });
+
+    let listener = net::TcpListener::bind(&opt.listen).await?;
+    info!("Listening on {}", &opt.listen);
     loop {
         let (sock, addr) = listener.accept().await?;
-        let client_atx = Arc::clone(&atx);
-        tokio::spawn(async move { handle_client(sock, addr, client_atx).await.unwrap() });
+        let ser_name = opt.serial_port.clone();
+        let client_read_atx = Arc::clone(&read_atx);
+        let client_write_atx = Arc::clone(&write_atx);
+        let write_enabled = opt.write;
+        tokio::spawn(async move {
+            handle_client(
+                ser_name,
+                sock,
+                addr,
+                client_read_atx,
+                client_write_atx,
+                write_enabled,
+            )
+            .await
+            .unwrap()
+        });
         task::yield_now().await;
     }
 }
 
 async fn handle_serial(
     mut port: serial::SystemPort,
-    atx: Arc<RwLock<broadcast::Sender<String>>>,
+    a_send: Arc<RwLock<broadcast::Sender<String>>>,
+    mut a_recv: mpsc::Receiver<String>,
 ) -> tokio::io::Result<()> {
+    info!("Starting serial IO");
     let mut buf = [0; BUFSZ];
-    info!("Starting serial read...");
     loop {
         let res = port.read(&mut buf);
         match res {
             Ok(n) => {
-                let s = String::from_utf8_lossy(&buf[0..n]);
-                // info!("Read {} bytes.", n);
-                // info!("serial: {}", String::from_utf8_lossy(&buf[0..n]));
-                eprint!("{}", &s);
+                let s = String::from_utf8_lossy(&buf[0..n]).to_string();
+                debug!("Serial read {} bytes.", n);
+                // eprint!("{}", &s);
                 {
-                    let tx = atx.write().await;
-                    tx.send(s.to_string()).unwrap();
+                    let tx = a_send.write().await;
+                    tx.send(s).unwrap();
                 }
             }
             Err(e) if e.kind() == io::ErrorKind::TimedOut => {}
             Err(e) => {
-                info!("Error {:?}", e);
+                error!("Error {:?}", e);
                 return Err(e);
+            }
+        }
+        tokio::select! {
+            Some(msg) = a_recv.recv() => {
+                debug!("serial write: <-- {} bytes", msg.len());
+                port.write_all(msg.as_bytes())?;
             }
         }
         task::yield_now().await;
@@ -148,21 +184,62 @@ async fn handle_serial(
 }
 
 async fn handle_client(
+    ser_name: String,
     mut sock: net::TcpStream,
     addr: SocketAddr,
-    atx: Arc<RwLock<broadcast::Sender<String>>>,
+    a_bsender: Arc<RwLock<broadcast::Sender<String>>>,
+    tx: Arc<RwLock<mpsc::Sender<String>>>,
+    write_enabled: bool,
 ) -> tokio::io::Result<()> {
     info!("Client handler: connection from {}", addr);
-    sock.write("\n*** Hello!\n\n".as_bytes()).await?;
+    let mut buf = [0; BUFSZ];
+    sock.write(format!("\n*** Connected to: {}\n\n", &ser_name).as_bytes())
+        .await?;
     let mut rx;
     {
-        rx = atx.write().await.subscribe();
+        // create a channel receiver for us
+        rx = a_bsender.write().await.subscribe();
     }
 
     loop {
-        let msg = rx.recv().await.unwrap();
-        sock.write(msg.as_bytes()).await?;
-        sock.flush().await?;
+        tokio::select! {
+            res = rx.recv() => {
+                match res {
+                    Ok(msg) => {
+                        sock.write_all(msg.as_bytes()).await?;
+                        sock.flush().await?;
+                    }
+                    Err(_e) => {
+                        return Err(io::Error::new(ErrorKind::NotConnected,
+                            "serial port gone?"));
+                    }
+                }
+            }
+            res = sock.read(&mut buf) => {
+                match res {
+                    Ok(len) => {
+                        debug!("Socket read: {} -> {} bytes", addr, len);
+                        // We only react to client input if write_enabled flag is set
+                        // otherwise, data from socket is just thrown away
+                        if write_enabled {
+                            let s = String::from_utf8_lossy(&buf[0..len]).to_string();
+                            let tx = tx.write().await;
+                            match tx.send(s).await {
+                                Ok(_) => { }
+                                Err(_e) => {
+                                    return Err(io::Error::new(ErrorKind::NotConnected,
+                                        "serial port gone?"));
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        return Err(e);
+                    }
+                }
+
+            }
+        }
         task::yield_now().await;
     }
 }
@@ -197,13 +274,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     })?;
     SerialPort::set_timeout(&mut ser_port, time::Duration::new(0, 20000000))?;
 
-    info!("Opened serial port.");
+    info!(
+        "Opened serial port {} with write {}abled.",
+        &opt.serial_port,
+        if opt.write { "en" } else { "dis" }
+    );
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
 
     rt.block_on(async move {
-        run_server(ser_port, opt.listen.clone()).await.unwrap();
+        run_server(ser_port, opt).await.unwrap();
     });
     rt.shutdown_timeout(time::Duration::new(5, 0));
     Ok(())
