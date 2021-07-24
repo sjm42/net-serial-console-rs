@@ -85,12 +85,21 @@ fn opt_stopbits(bits: u32) -> tokio_serial::Result<tokio_serial::StopBits> {
 }
 
 async fn run_server(opt: GlobalServerOptions) -> io::Result<()> {
-    let port = tokio_serial::new(&opt.serial_port, opt.ser_baud)
+    let port = match tokio_serial::new(&opt.serial_port, opt.ser_baud)
         .flow_control(opt_flowcontrol(&opt.ser_flow)?)
         .data_bits(opt_databits(opt.ser_datab)?)
         .parity(opt_parity(&opt.ser_parity)?)
         .stop_bits(opt_stopbits(opt.ser_stopb)?)
-        .open_native_async()?;
+        .open_native_async()
+    {
+        Ok(p) => p,
+        Err(e) => {
+            error!("Failed to open serial port {}", &opt.serial_port);
+            error!("{}", e);
+            error!("Exit.");
+            process::exit(1);
+        }
+    };
     info!(
         "Opened serial port {} with write {}abled.",
         &opt.serial_port,
@@ -123,19 +132,17 @@ async fn handle_listener(
     read_atx: Arc<RwLock<broadcast::Sender<String>>>,
     write_atx: Arc<RwLock<mpsc::Sender<String>>>,
 ) -> io::Result<()> {
-    let listener;
-    match net::TcpListener::bind(&opt.listen).await {
-        Ok(l) => {
-            listener = l;
-        }
+    let listener = match net::TcpListener::bind(&opt.listen).await {
+        Ok(l) => l,
         Err(e) => {
             error!("Failed to listen {}", &opt.listen);
             error!("{}", e);
             error!("Exit.");
             process::exit(1);
         }
-    }
+    };
     info!("Listening on {}", &opt.listen);
+
     loop {
         let res = listener.accept().await;
         match res {
@@ -176,11 +183,11 @@ async fn handle_serial(
         tokio::select! {
             res = port.read(&mut buf) => {
                 match res {
+                    Ok(0) => {
+                        info!("Serial disconnected.");
+                        return Ok(());
+                    }
                     Ok(n) => {
-                        if n == 0 {
-                            info!("Serial disconnected.");
-                            return Ok(());
-                        }
                         debug!("Serial read {} bytes.", n);
                         let s = String::from_utf8_lossy(&buf[0..n]).to_string();
                         let tx = a_send.write().await;
@@ -262,11 +269,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         .filter_level(loglevel)
         .format_timestamp_secs()
         .init();
-    info!("Starting up console-server...");
-    info!("Git branch: {}", env!("GIT_BRANCH"));
-    info!("Git commit: {}", env!("GIT_COMMIT"));
-    info!("Source timestamp: {}", env!("SOURCE_TIMESTAMP"));
-    info!("Compiler version: {}", env!("RUSTC_VERSION"));
+    info!("Starting up console-server");
+    debug!("Git branch: {}", env!("GIT_BRANCH"));
+    debug!("Git commit: {}", env!("GIT_COMMIT"));
+    debug!("Source timestamp: {}", env!("SOURCE_TIMESTAMP"));
+    debug!("Compiler version: {}", env!("RUSTC_VERSION"));
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
