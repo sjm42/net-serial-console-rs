@@ -12,9 +12,9 @@ bytes = "1"
 env_logger = "0"
 log = "0"
 parking_lot = "0"
-serial = "0"
 structopt = "0"
 tokio = { version = "1", features = ["full"] }
+tokio-serial = "5.4.0-beta4"
 
 [build-dependencies]
 build-data = "0"

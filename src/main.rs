@@ -1,13 +1,12 @@
 // main.rs
 
 use log::*;
-use serial::SerialPort;
-use std::io::{ErrorKind, Read, Write};
-use std::{error::Error, net::SocketAddr, sync::Arc, time};
+use std::{error::Error, net::SocketAddr, process, sync::Arc, time};
 use structopt::StructOpt;
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
+use tokio::net;
 use tokio::sync::{broadcast, mpsc, RwLock};
-use tokio::{net, task};
+use tokio_serial::{self, SerialPortBuilderExt};
 
 const BUFSZ: usize = 1024;
 const CHANSZ: usize = 256;
@@ -36,76 +35,68 @@ pub struct GlobalServerOptions {
     pub write: bool,
 }
 
-fn opt_baudrate(baudrate: u32) -> Result<serial::BaudRate, serial::Error> {
-    match baudrate {
-        110 => Ok(serial::Baud110),
-        300 => Ok(serial::Baud300),
-        600 => Ok(serial::Baud600),
-        1200 => Ok(serial::Baud1200),
-        2400 => Ok(serial::Baud2400),
-        4800 => Ok(serial::Baud4800),
-        9600 => Ok(serial::Baud9600),
-        19200 => Ok(serial::Baud19200),
-        38400 => Ok(serial::Baud38400),
-        57600 => Ok(serial::Baud57600),
-        115200 => Ok(serial::Baud115200),
-        _ => Err(serial::Error::new(
-            serial::ErrorKind::InvalidInput,
-            "invalid baudrate",
-        )),
-    }
-}
-
-fn opt_flowcontrol(flowcontrol: &str) -> Result<serial::FlowControl, serial::Error> {
+fn opt_flowcontrol(flowcontrol: &str) -> tokio_serial::Result<tokio_serial::FlowControl> {
     match flowcontrol {
-        "N" | "n" | "NONE" | "none" => Ok(serial::FlowNone),
-        "H" | "h" | "HARD" | "hard" | "hw" | "hardware" => Ok(serial::FlowHardware),
-        "S" | "s" | "SOFT" | "soft" | "sw" | "software" => Ok(serial::FlowControl::FlowSoftware),
-        _ => Err(serial::Error::new(
-            serial::ErrorKind::InvalidInput,
+        "N" | "n" | "NONE" | "none" => Ok(tokio_serial::FlowControl::None),
+        "H" | "h" | "HARD" | "hard" | "hw" | "hardware" => Ok(tokio_serial::FlowControl::Hardware),
+        "S" | "s" | "SOFT" | "soft" | "sw" | "software" => Ok(tokio_serial::FlowControl::Software),
+        _ => Err(tokio_serial::Error::new(
+            tokio_serial::ErrorKind::InvalidInput,
             "invalid flowcontrol",
         )),
     }
 }
 
-fn opt_databits(bits: u32) -> Result<serial::CharSize, serial::Error> {
+fn opt_databits(bits: u32) -> tokio_serial::Result<tokio_serial::DataBits> {
     match bits {
-        5 => Ok(serial::Bits5),
-        6 => Ok(serial::Bits6),
-        7 => Ok(serial::Bits7),
-        8 => Ok(serial::Bits8),
-        _ => Err(serial::Error::new(
-            serial::ErrorKind::InvalidInput,
+        5 => Ok(tokio_serial::DataBits::Five),
+        6 => Ok(tokio_serial::DataBits::Six),
+        7 => Ok(tokio_serial::DataBits::Seven),
+        8 => Ok(tokio_serial::DataBits::Eight),
+        _ => Err(tokio_serial::Error::new(
+            tokio_serial::ErrorKind::InvalidInput,
             "invalid databits",
         )),
     }
 }
 
-fn opt_parity(parity: &str) -> Result<serial::Parity, serial::Error> {
+fn opt_parity(parity: &str) -> tokio_serial::Result<tokio_serial::Parity> {
     match parity {
-        "N" | "n" => Ok(serial::ParityNone),
-        "E" | "e" => Ok(serial::ParityEven),
-        "O" | "o" => Ok(serial::ParityOdd),
-        _ => Err(serial::Error::new(
-            serial::ErrorKind::InvalidInput,
+        "N" | "n" => Ok(tokio_serial::Parity::None),
+        "E" | "e" => Ok(tokio_serial::Parity::Even),
+        "O" | "o" => Ok(tokio_serial::Parity::Odd),
+        _ => Err(tokio_serial::Error::new(
+            tokio_serial::ErrorKind::InvalidInput,
             "invalid parity",
         )),
     }
 }
 
-fn opt_stopbits(bits: u32) -> Result<serial::StopBits, serial::Error> {
+fn opt_stopbits(bits: u32) -> tokio_serial::Result<tokio_serial::StopBits> {
     // let foo = serial::Error::new("");
     match bits {
-        1 => Ok(serial::Stop1),
-        2 => Ok(serial::Stop2),
-        _ => Err(serial::Error::new(
-            serial::ErrorKind::InvalidInput,
+        1 => Ok(tokio_serial::StopBits::One),
+        2 => Ok(tokio_serial::StopBits::Two),
+        _ => Err(tokio_serial::Error::new(
+            tokio_serial::ErrorKind::InvalidInput,
             "invalid stopbits",
         )),
     }
 }
 
-async fn run_server(port: serial::SystemPort, opt: GlobalServerOptions) -> tokio::io::Result<()> {
+async fn run_server(opt: GlobalServerOptions) -> io::Result<()> {
+    let port = tokio_serial::new(&opt.serial_port, opt.ser_baud)
+        .flow_control(opt_flowcontrol(&opt.ser_flow)?)
+        .data_bits(opt_databits(opt.ser_datab)?)
+        .parity(opt_parity(&opt.ser_parity)?)
+        .stop_bits(opt_stopbits(opt.ser_stopb)?)
+        .open_native_async()?;
+    info!(
+        "Opened serial port {} with write {}abled.",
+        &opt.serial_port,
+        if opt.write { "en" } else { "dis" }
+    );
+
     // Note: here read/write in variable naming is referring to the serial port data direction
 
     // create a broadcast channel for sending serial msgs to all clients
@@ -118,129 +109,143 @@ async fn run_server(port: serial::SystemPort, opt: GlobalServerOptions) -> tokio
     let (write_tx, write_rx) = mpsc::channel(CHANSZ);
     // ...and put the channel sender inside Arc+RwLock to be able to move it
     let write_atx = Arc::new(RwLock::new(write_tx));
-
     // create channel clone for serial handler
     let ser_read_atx = Arc::clone(&read_atx);
-    // create the serial handler itself
-    tokio::spawn(async move { handle_serial(port, ser_read_atx, write_rx).await.unwrap() });
 
-    let listener = net::TcpListener::bind(&opt.listen).await?;
+    tokio::spawn(async move {
+        handle_listener(opt, read_atx, write_atx).await.unwrap();
+    });
+    handle_serial(port, ser_read_atx, write_rx).await
+}
+
+async fn handle_listener(
+    opt: GlobalServerOptions,
+    read_atx: Arc<RwLock<broadcast::Sender<String>>>,
+    write_atx: Arc<RwLock<mpsc::Sender<String>>>,
+) -> io::Result<()> {
+    let listener;
+    match net::TcpListener::bind(&opt.listen).await {
+        Ok(l) => {
+            listener = l;
+        }
+        Err(e) => {
+            error!("Failed to listen {}", &opt.listen);
+            error!("{}", e);
+            error!("Exit.");
+            process::exit(1);
+        }
+    }
     info!("Listening on {}", &opt.listen);
     loop {
-        let (sock, addr) = listener.accept().await?;
-        let ser_name = opt.serial_port.clone();
-        let client_read_atx = Arc::clone(&read_atx);
-        let client_write_atx = Arc::clone(&write_atx);
-        let write_enabled = opt.write;
-        tokio::spawn(async move {
-            handle_client(
-                ser_name,
-                sock,
-                addr,
-                client_read_atx,
-                client_write_atx,
-                write_enabled,
-            )
-            .await
-            .unwrap()
-        });
-        task::yield_now().await;
+        let res = listener.accept().await;
+        match res {
+            Ok((sock, addr)) => {
+                let ser_name = opt.serial_port.clone();
+                let write_enabled = opt.write;
+                let client_read_atx = Arc::clone(&read_atx);
+                let client_write_atx = Arc::clone(&write_atx);
+                tokio::spawn(async move {
+                    handle_client(
+                        ser_name,
+                        write_enabled,
+                        sock,
+                        addr,
+                        client_read_atx,
+                        client_write_atx,
+                    )
+                    .await
+                    .unwrap()
+                });
+            }
+            Err(e) => {
+                error!("Accept failed: {}", e);
+            }
+        }
     }
 }
 
 async fn handle_serial(
-    mut port: serial::SystemPort,
+    mut port: tokio_serial::SerialStream,
     a_send: Arc<RwLock<broadcast::Sender<String>>>,
     mut a_recv: mpsc::Receiver<String>,
-) -> tokio::io::Result<()> {
+) -> io::Result<()> {
     info!("Starting serial IO");
+
     let mut buf = [0; BUFSZ];
     loop {
-        let res = port.read(&mut buf);
-        match res {
-            Ok(n) => {
-                let s = String::from_utf8_lossy(&buf[0..n]).to_string();
-                debug!("Serial read {} bytes.", n);
-                // eprint!("{}", &s);
-                {
-                    let tx = a_send.write().await;
-                    tx.send(s).unwrap();
+        tokio::select! {
+            res = port.read(&mut buf) => {
+                match res {
+                    Ok(n) => {
+                        if n == 0 {
+                            info!("Serial disconnected.");
+                            return Ok(());
+                        }
+                        debug!("Serial read {} bytes.", n);
+                        let s = String::from_utf8_lossy(&buf[0..n]).to_string();
+                        let tx = a_send.write().await;
+                        tx.send(s).unwrap();
+                        }
+                    Err(e) => {
+                        return Err(e);
+                    }
                 }
             }
-            Err(e) if e.kind() == io::ErrorKind::TimedOut => {}
-            Err(e) => {
-                error!("Error {:?}", e);
-                return Err(e);
-            }
-        }
-        tokio::select! {
             Some(msg) = a_recv.recv() => {
-                debug!("serial write: <-- {} bytes", msg.len());
-                port.write_all(msg.as_bytes())?;
+                debug!("serial write {} bytes", msg.len());
+                port.write_all(msg.as_bytes()).await?;
             }
         }
-        task::yield_now().await;
     }
 }
 
 async fn handle_client(
     ser_name: String,
+    write_enabled: bool,
     mut sock: net::TcpStream,
     addr: SocketAddr,
     a_bsender: Arc<RwLock<broadcast::Sender<String>>>,
     tx: Arc<RwLock<mpsc::Sender<String>>>,
-    write_enabled: bool,
-) -> tokio::io::Result<()> {
-    info!("Client handler: connection from {}", addr);
-    let mut buf = [0; BUFSZ];
-    sock.write(format!("\n*** Connected to: {}\n\n", &ser_name).as_bytes())
-        .await?;
+) -> io::Result<()> {
+    info!("Client connection from {}", addr);
+
     let mut rx;
     {
         // create a channel receiver for us
         rx = a_bsender.write().await.subscribe();
     }
+    let mut buf = [0; BUFSZ];
+    sock.write_all(format!("*** Connected to: {}\n", &ser_name).as_bytes())
+        .await?;
 
     loop {
         tokio::select! {
-            res = rx.recv() => {
-                match res {
-                    Ok(msg) => {
-                        sock.write_all(msg.as_bytes()).await?;
-                        sock.flush().await?;
-                    }
-                    Err(_e) => {
-                        return Err(io::Error::new(ErrorKind::NotConnected,
-                            "serial port gone?"));
-                    }
-                }
+            Ok(msg) = rx.recv() => {
+                sock.write_all(msg.as_bytes()).await?;
+                sock.flush().await?;
             }
             res = sock.read(&mut buf) => {
                 match res {
-                    Ok(len) => {
-                        debug!("Socket read: {} -> {} bytes", addr, len);
+                    Ok(n) => {
+                        if n == 0 {
+                            info!("Client disconnected: {}", addr);
+                            return Ok(());
+                        }
+                        debug!("Socket read: {} bytes <-- {}", n, addr);
                         // We only react to client input if write_enabled flag is set
                         // otherwise, data from socket is just thrown away
                         if write_enabled {
-                            let s = String::from_utf8_lossy(&buf[0..len]).to_string();
-                            let tx = tx.write().await;
-                            match tx.send(s).await {
-                                Ok(_) => { }
-                                Err(_e) => {
-                                    return Err(io::Error::new(ErrorKind::NotConnected,
-                                        "serial port gone?"));
-                                }
+                            let s = String::from_utf8_lossy(&buf[0..n]).to_string();
+                            {
+                                let tx = tx.write().await;
+                                tx.send(s).await.unwrap();
                             }
                         }
                     }
-                    Err(e) => {
-                        return Err(e);
-                    }
+                    Err(e) => { return Err(e); }
                 }
-
             }
         }
-        task::yield_now().await;
     }
 }
 
@@ -263,30 +268,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     info!("Source timestamp: {}", env!("SOURCE_TIMESTAMP"));
     info!("Compiler version: {}", env!("RUSTC_VERSION"));
 
-    let mut ser_port = serial::open(&opt.serial_port)?;
-    ser_port.reconfigure(&|s| {
-        s.set_flow_control(opt_flowcontrol(&opt.ser_flow)?);
-        s.set_baud_rate(opt_baudrate(opt.ser_baud)?)?;
-        s.set_char_size(opt_databits(opt.ser_datab)?);
-        s.set_parity(opt_parity(&opt.ser_parity)?);
-        s.set_stop_bits(opt_stopbits(opt.ser_stopb)?);
-        Ok(())
-    })?;
-    SerialPort::set_timeout(&mut ser_port, time::Duration::new(0, 20000000))?;
-
-    info!(
-        "Opened serial port {} with write {}abled.",
-        &opt.serial_port,
-        if opt.write { "en" } else { "dis" }
-    );
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
 
     rt.block_on(async move {
-        run_server(ser_port, opt).await.unwrap();
+        run_server(opt).await.unwrap();
     });
     rt.shutdown_timeout(time::Duration::new(5, 0));
+    info!("Exit.");
     Ok(())
 }
 // EOF
