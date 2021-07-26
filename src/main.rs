@@ -110,15 +110,12 @@ async fn run_server(opt: GlobalServerOptions) -> io::Result<()> {
 
     // create a broadcast channel for sending serial msgs to all clients
     let (read_tx, _read_rx) = broadcast::channel(CHANSZ);
-    let read_atx = read_tx.clone();
 
     // create an mpsc channel for receiving serial port input from any client
     // mpsc = multi-producer, single consumer queue
     let (write_tx, write_rx) = mpsc::channel(CHANSZ);
 
-    tokio::spawn(async move {
-        handle_listener(opt, read_atx, write_tx).await.unwrap();
-    });
+    tokio::spawn(handle_listener(opt, read_tx.clone(), write_tx));
     handle_serial(port, read_tx, write_rx).await
 }
 
