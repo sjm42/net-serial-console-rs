@@ -11,7 +11,7 @@ A note about security: there is none. No ACL, no encryption, no authentication. 
 You should probably use this only over ssh connections with tcp port forwarding
 and limit the console server listening only on localhost.
 
-This programm was initially made just for learning Rust. It is a kind of slightly improved
+This program was initially written just for learning Rust. It is kind of slightly improved
 re-implementation of old code written in Python.
 
 ```
