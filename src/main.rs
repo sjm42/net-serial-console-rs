@@ -1,11 +1,11 @@
 // main.rs
 
 use log::*;
-use std::{error::Error, net::SocketAddr, process, sync::Arc, time};
+use std::{error::Error, net::SocketAddr, process, time};
 use structopt::StructOpt;
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net;
-use tokio::sync::{broadcast, mpsc, RwLock};
+use tokio::sync::{broadcast, mpsc};
 use tokio_serial::{self, SerialPortBuilderExt};
 
 const BUFSZ: usize = 1024;
@@ -110,27 +110,19 @@ async fn run_server(opt: GlobalServerOptions) -> io::Result<()> {
 
     // create a broadcast channel for sending serial msgs to all clients
     let (read_tx, _read_rx) = broadcast::channel(CHANSZ);
-    // ...and put the channel sender inside Arc+RwLock to be able to move it
-    let read_atx = Arc::new(RwLock::new(read_tx));
 
     // create an mpsc channel for receiving serial port input from any client
     // mpsc = multi-producer, single consumer queue
     let (write_tx, write_rx) = mpsc::channel(CHANSZ);
-    // ...and put the channel sender inside Arc+RwLock to be able to move it
-    let write_atx = Arc::new(RwLock::new(write_tx));
-    // create channel clone for serial handler
-    let ser_read_atx = Arc::clone(&read_atx);
 
-    tokio::spawn(async move {
-        handle_listener(opt, read_atx, write_atx).await.unwrap();
-    });
-    handle_serial(port, ser_read_atx, write_rx).await
+    tokio::spawn(handle_listener(opt, read_tx.clone(), write_tx));
+    handle_serial(port, read_tx, write_rx).await
 }
 
 async fn handle_listener(
     opt: GlobalServerOptions,
-    read_atx: Arc<RwLock<broadcast::Sender<String>>>,
-    write_atx: Arc<RwLock<mpsc::Sender<String>>>,
+    read_atx: broadcast::Sender<Vec<u8>>,
+    write_atx: mpsc::Sender<Vec<u8>>,
 ) -> io::Result<()> {
     let listener = match net::TcpListener::bind(&opt.listen).await {
         Ok(l) => l,
@@ -149,8 +141,8 @@ async fn handle_listener(
             Ok((sock, addr)) => {
                 let ser_name = opt.serial_port.clone();
                 let write_enabled = opt.write;
-                let client_read_atx = Arc::clone(&read_atx);
-                let client_write_atx = Arc::clone(&write_atx);
+                let client_read_atx = read_atx.subscribe();
+                let client_write_atx = write_atx.clone();
                 tokio::spawn(async move {
                     handle_client(
                         ser_name,
@@ -173,8 +165,8 @@ async fn handle_listener(
 
 async fn handle_serial(
     mut port: tokio_serial::SerialStream,
-    a_send: Arc<RwLock<broadcast::Sender<String>>>,
-    mut a_recv: mpsc::Receiver<String>,
+    a_send: broadcast::Sender<Vec<u8>>,
+    mut a_recv: mpsc::Receiver<Vec<u8>>,
 ) -> io::Result<()> {
     info!("Starting serial IO");
 
@@ -189,10 +181,8 @@ async fn handle_serial(
                     }
                     Ok(n) => {
                         debug!("Serial read {} bytes.", n);
-                        let s = String::from_utf8_lossy(&buf[0..n]).to_string();
-                        let tx = a_send.write().await;
-                        tx.send(s).unwrap();
-                        }
+                        a_send.send(buf[0..n].to_owned()).unwrap();
+                    }
                     Err(e) => {
                         return Err(e);
                     }
@@ -200,7 +190,7 @@ async fn handle_serial(
             }
             Some(msg) = a_recv.recv() => {
                 debug!("serial write {} bytes", msg.len());
-                port.write_all(msg.as_bytes()).await?;
+                port.write_all(msg.as_ref()).await?;
             }
         }
     }
@@ -211,16 +201,11 @@ async fn handle_client(
     write_enabled: bool,
     mut sock: net::TcpStream,
     addr: SocketAddr,
-    a_bsender: Arc<RwLock<broadcast::Sender<String>>>,
-    tx: Arc<RwLock<mpsc::Sender<String>>>,
+    mut rx: broadcast::Receiver<Vec<u8>>,
+    tx: mpsc::Sender<Vec<u8>>,
 ) -> io::Result<()> {
     info!("Client connection from {}", addr);
 
-    let mut rx;
-    {
-        // create a channel receiver for us
-        rx = a_bsender.write().await.subscribe();
-    }
     let mut buf = [0; BUFSZ];
     sock.write_all(format!("*** Connected to: {}\n", &ser_name).as_bytes())
         .await?;
@@ -228,7 +213,7 @@ async fn handle_client(
     loop {
         tokio::select! {
             Ok(msg) = rx.recv() => {
-                sock.write_all(msg.as_bytes()).await?;
+                sock.write_all(msg.as_ref()).await?;
                 sock.flush().await?;
             }
             res = sock.read(&mut buf) => {
@@ -242,11 +227,7 @@ async fn handle_client(
                         // We only react to client input if write_enabled flag is set
                         // otherwise, data from socket is just thrown away
                         if write_enabled {
-                            let s = String::from_utf8_lossy(&buf[0..n]).to_string();
-                            {
-                                let tx = tx.write().await;
-                                tx.send(s).await.unwrap();
-                            }
+                            tx.send(buf[0..n].to_owned()).await.unwrap();
                         }
                     }
                     Err(e) => { return Err(e); }
