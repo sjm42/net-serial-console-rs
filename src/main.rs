@@ -121,8 +121,8 @@ async fn run_server(opt: GlobalServerOptions) -> io::Result<()> {
 
 async fn handle_listener(
     opt: GlobalServerOptions,
-    read_atx: broadcast::Sender<String>,
-    write_atx: mpsc::Sender<String>,
+    read_atx: broadcast::Sender<Vec<u8>>,
+    write_atx: mpsc::Sender<Vec<u8>>,
 ) -> io::Result<()> {
     let listener = match net::TcpListener::bind(&opt.listen).await {
         Ok(l) => l,
@@ -165,8 +165,8 @@ async fn handle_listener(
 
 async fn handle_serial(
     mut port: tokio_serial::SerialStream,
-    a_send: broadcast::Sender<String>,
-    mut a_recv: mpsc::Receiver<String>,
+    a_send: broadcast::Sender<Vec<u8>>,
+    mut a_recv: mpsc::Receiver<Vec<u8>>,
 ) -> io::Result<()> {
     info!("Starting serial IO");
 
@@ -181,8 +181,7 @@ async fn handle_serial(
                     }
                     Ok(n) => {
                         debug!("Serial read {} bytes.", n);
-                        let s = String::from_utf8_lossy(&buf[0..n]).to_string();
-                        a_send.send(s).unwrap();
+                        a_send.send(buf[0..n].to_owned()).unwrap();
                     }
                     Err(e) => {
                         return Err(e);
@@ -191,7 +190,7 @@ async fn handle_serial(
             }
             Some(msg) = a_recv.recv() => {
                 debug!("serial write {} bytes", msg.len());
-                port.write_all(msg.as_bytes()).await?;
+                port.write_all(msg.as_ref()).await?;
             }
         }
     }
@@ -202,8 +201,8 @@ async fn handle_client(
     write_enabled: bool,
     mut sock: net::TcpStream,
     addr: SocketAddr,
-    mut rx: broadcast::Receiver<String>,
-    tx: mpsc::Sender<String>,
+    mut rx: broadcast::Receiver<Vec<u8>>,
+    tx: mpsc::Sender<Vec<u8>>,
 ) -> io::Result<()> {
     info!("Client connection from {}", addr);
 
@@ -214,7 +213,7 @@ async fn handle_client(
     loop {
         tokio::select! {
             Ok(msg) = rx.recv() => {
-                sock.write_all(msg.as_bytes()).await?;
+                sock.write_all(msg.as_ref()).await?;
                 sock.flush().await?;
             }
             res = sock.read(&mut buf) => {
@@ -228,8 +227,7 @@ async fn handle_client(
                         // We only react to client input if write_enabled flag is set
                         // otherwise, data from socket is just thrown away
                         if write_enabled {
-                            let s = String::from_utf8_lossy(&buf[0..n]).to_string();
-                            tx.send(s).await.unwrap();
+                            tx.send(buf[0..n].to_owned()).await.unwrap();
                         }
                     }
                     Err(e) => { return Err(e); }
