@@ -359,9 +359,9 @@ dependencies = [
 
 [[package]]
 name = "mio-serial"
-version = "4.0.0-beta4"
+version = "5.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89dc2265b44062d6dbb189a0434e6f4966f04db971487b2651bb19495b47598e"
+checksum = "d6f47dcdec193b77e2166faa0e3be4ee04f324ce6780c54efe7af6c3ee7360e4"
 dependencies = [
  "log",
  "mio",
@@ -765,9 +765,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-serial"
-version = "5.4.0-beta4"
+version = "5.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62d966953932f152937f7a74c411292a93cd104442663b3c2bc49dbb7dd4b716"
+checksum = "c75b04fbb029a3f77272b3356453c97c5dbdebcf28aa248a34fd80a442f2dda1"
 dependencies = [
  "cfg-if 1.0.0",
  "futures",
