@@ -135,7 +135,6 @@ dependencies = [
  "bytes",
  "env_logger",
  "log",
- "parking_lot",
  "structopt",
  "tokio",
  "tokio-serial",
