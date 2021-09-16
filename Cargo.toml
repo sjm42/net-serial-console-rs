@@ -2,7 +2,13 @@
 
 [package]
 name = "net-serial-console"
-version = "0.2.0"
+version = "0.3.0"
+authors = ["Sami J. Mäkinen <sjm@iki.fi>"]
+description = "Serial console server and web client"
+repository = "https://github.com/sjm42/net-serial-console-rs"
+readme = "README.md"
+keywords = ["serial", "console", "multiplex"]
+license = "MIT OR Apache-2.0"
 edition = "2018"
 resolver = "2"
 
