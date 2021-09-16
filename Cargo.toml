@@ -1,8 +1,8 @@
 # Cargo.toml
 
 [package]
-name = "console-server"
-version = "0.1.0"
+name = "net-serial-console"
+version = "0.2.0"
 edition = "2018"
 resolver = "2"
 
@@ -10,11 +10,17 @@ resolver = "2"
 
 [dependencies]
 bytes = "*"
+chrono = "*"
 env_logger = "*"
+hyper = { version = "*", features = ["full"] }
 log = "*"
+once_cell = "*"
+parking_lot = "*"
+sailfish = "0.3.3"
 structopt = "*"
 tokio = { version = "*", features = ["full"] }
 tokio-serial = "*"
+tokio-util = { version = "*", features = ["full"] }
 
 [build-dependencies]
 build-data = "*"

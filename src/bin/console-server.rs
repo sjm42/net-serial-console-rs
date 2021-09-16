@@ -8,31 +8,61 @@ use tokio::net;
 use tokio::sync::{broadcast, mpsc};
 use tokio_serial::{self, SerialPortBuilderExt};
 
+use net_serial_console::*;
+
 const BUFSZ: usize = 1024;
 const CHANSZ: usize = 256;
 
-#[derive(Debug, StructOpt)]
-pub struct GlobalServerOptions {
-    #[structopt(short, long)]
-    pub debug: bool,
-    #[structopt(short, long)]
-    pub trace: bool,
-    #[structopt(short, long, default_value = "127.0.0.1:24242")]
-    pub listen: String,
-    #[structopt(short, long, default_value = "/dev/ttyUSB0")]
-    pub serial_port: String,
-    #[structopt(long, default_value = "none")]
-    pub ser_flow: String,
-    #[structopt(short = "b", long, default_value = "9600")]
-    pub ser_baud: u32,
-    #[structopt(long, default_value = "8")]
-    pub ser_datab: u32,
-    #[structopt(long, default_value = "N")]
-    pub ser_parity: String,
-    #[structopt(long, default_value = "1")]
-    pub ser_stopb: u32,
-    #[structopt(short, long)]
-    pub write: bool,
+fn main() -> Result<(), Box<dyn Error>> {
+    let mut opts = OptsConsoleServer::from_args();
+    opts.finish()?;
+    start_pgm(&opts.c, "Serial console server");
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+
+    rt.block_on(async move {
+        run_server(opts).await.unwrap();
+    });
+    rt.shutdown_timeout(time::Duration::new(5, 0));
+    info!("Exit.");
+    Ok(())
+}
+
+async fn run_server(opts: OptsConsoleServer) -> io::Result<()> {
+    let port = match tokio_serial::new(&opts.serial_port, opts.ser_baud)
+        .flow_control(opt_flowcontrol(&opts.ser_flow)?)
+        .data_bits(opt_databits(opts.ser_datab)?)
+        .parity(opt_parity(&opts.ser_parity)?)
+        .stop_bits(opt_stopbits(opts.ser_stopb)?)
+        .open_native_async()
+    {
+        Ok(p) => p,
+        Err(e) => {
+            error!("Failed to open serial port {}", &opts.serial_port);
+            error!("{}", e);
+            error!("Exit.");
+            process::exit(1);
+        }
+    };
+    info!(
+        "Opened serial port {} with write {}abled.",
+        &opts.serial_port,
+        if opts.write { "en" } else { "dis" }
+    );
+
+    // Note: here read/write in variable naming is referring to the serial port data direction
+
+    // create a broadcast channel for sending serial msgs to all clients
+    let (read_tx, _read_rx) = broadcast::channel(CHANSZ);
+
+    // create an mpsc channel for receiving serial port input from any client
+    // mpsc = multi-producer, single consumer queue
+    let (write_tx, write_rx) = mpsc::channel(CHANSZ);
+
+    tokio::spawn(handle_listener(opts, read_tx.clone(), write_tx));
+    handle_serial(port, read_tx, write_rx).await
 }
 
 fn opt_flowcontrol(flowcontrol: &str) -> tokio_serial::Result<tokio_serial::FlowControl> {
@@ -84,63 +114,28 @@ fn opt_stopbits(bits: u32) -> tokio_serial::Result<tokio_serial::StopBits> {
     }
 }
 
-async fn run_server(opt: GlobalServerOptions) -> io::Result<()> {
-    let port = match tokio_serial::new(&opt.serial_port, opt.ser_baud)
-        .flow_control(opt_flowcontrol(&opt.ser_flow)?)
-        .data_bits(opt_databits(opt.ser_datab)?)
-        .parity(opt_parity(&opt.ser_parity)?)
-        .stop_bits(opt_stopbits(opt.ser_stopb)?)
-        .open_native_async()
-    {
-        Ok(p) => p,
-        Err(e) => {
-            error!("Failed to open serial port {}", &opt.serial_port);
-            error!("{}", e);
-            error!("Exit.");
-            process::exit(1);
-        }
-    };
-    info!(
-        "Opened serial port {} with write {}abled.",
-        &opt.serial_port,
-        if opt.write { "en" } else { "dis" }
-    );
-
-    // Note: here read/write in variable naming is referring to the serial port data direction
-
-    // create a broadcast channel for sending serial msgs to all clients
-    let (read_tx, _read_rx) = broadcast::channel(CHANSZ);
-
-    // create an mpsc channel for receiving serial port input from any client
-    // mpsc = multi-producer, single consumer queue
-    let (write_tx, write_rx) = mpsc::channel(CHANSZ);
-
-    tokio::spawn(handle_listener(opt, read_tx.clone(), write_tx));
-    handle_serial(port, read_tx, write_rx).await
-}
-
 async fn handle_listener(
-    opt: GlobalServerOptions,
+    opts: OptsConsoleServer,
     read_atx: broadcast::Sender<Vec<u8>>,
     write_atx: mpsc::Sender<Vec<u8>>,
 ) -> io::Result<()> {
-    let listener = match net::TcpListener::bind(&opt.listen).await {
+    let listener = match net::TcpListener::bind(&opts.listen).await {
         Ok(l) => l,
         Err(e) => {
-            error!("Failed to listen {}", &opt.listen);
+            error!("Failed to listen {}", &opts.listen);
             error!("{}", e);
             error!("Exit.");
             process::exit(1);
         }
     };
-    info!("Listening on {}", &opt.listen);
+    info!("Listening on {}", &opts.listen);
 
     loop {
         let res = listener.accept().await;
         match res {
             Ok((sock, addr)) => {
-                let ser_name = opt.serial_port.clone();
-                let write_enabled = opt.write;
+                let ser_name = opts.serial_port.clone();
+                let write_enabled = opts.write;
                 let client_read_atx = read_atx.subscribe();
                 let client_write_atx = write_atx.clone();
                 tokio::spawn(async move {
@@ -235,36 +230,5 @@ async fn handle_client(
             }
         }
     }
-}
-
-fn main() -> Result<(), Box<dyn Error>> {
-    let opt: GlobalServerOptions = GlobalServerOptions::from_args();
-    let loglevel = if opt.trace {
-        LevelFilter::Trace
-    } else if opt.debug {
-        LevelFilter::Debug
-    } else {
-        LevelFilter::Info
-    };
-    env_logger::Builder::new()
-        .filter_level(loglevel)
-        .format_timestamp_secs()
-        .init();
-    info!("Starting up console-server");
-    debug!("Git branch: {}", env!("GIT_BRANCH"));
-    debug!("Git commit: {}", env!("GIT_COMMIT"));
-    debug!("Source timestamp: {}", env!("SOURCE_TIMESTAMP"));
-    debug!("Compiler version: {}", env!("RUSTC_VERSION"));
-
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()?;
-
-    rt.block_on(async move {
-        run_server(opt).await.unwrap();
-    });
-    rt.shutdown_timeout(time::Duration::new(5, 0));
-    info!("Exit.");
-    Ok(())
 }
 // EOF
