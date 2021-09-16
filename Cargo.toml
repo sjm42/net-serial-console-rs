@@ -4,7 +4,7 @@
 name = "net-serial-console"
 version = "0.3.0"
 authors = ["Sami J. Mäkinen <sjm@iki.fi>"]
-description = "Serial console server and web client"
+description = "Serial console tcp server and web client"
 repository = "https://github.com/sjm42/net-serial-console-rs"
 readme = "README.md"
 keywords = ["serial", "console", "multiplex"]

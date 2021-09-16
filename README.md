@@ -1,6 +1,6 @@
-# A serial console server and web client in Rust
+# A serial console tcp server and web client in Rust
 
-## Server
+## TCP Server
 
 This small program is meant for sharing a serial port into network so that
 it can be accessed with telnet, for example.
