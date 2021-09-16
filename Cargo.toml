@@ -9,21 +9,21 @@ resolver = "2"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bytes = "*"
-chrono = "*"
-env_logger = "*"
-hyper = { version = "*", features = ["full"] }
-log = "*"
-once_cell = "*"
-parking_lot = "*"
-sailfish = "0.3.3"
-structopt = "*"
-tokio = { version = "*", features = ["full"] }
-tokio-serial = "*"
-tokio-util = { version = "*", features = ["full"] }
+bytes = "1.1"
+chrono = "0.4"
+env_logger = "0.9"
+hyper = { version = "0.14", features = ["full"] }
+log = "0.4"
+once_cell = "1.8"
+parking_lot = "0.11"
+sailfish = "0.3"
+structopt = "0.3"
+tokio = { version = "1.11", features = ["full"] }
+tokio-serial = "5.4"
+tokio-util = { version = "0.6", features = ["full"] }
 
 [build-dependencies]
-build-data = "*"
+build-data = "0.1"
 
 [profile.release]
 lto = true
