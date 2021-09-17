@@ -1,4 +1,4 @@
-# A serial console tcp server and web client in Rust
+# Serial console tcp server+multiplexer and web client
 
 ## TCP Server
 
@@ -6,15 +6,19 @@ This small program is meant for sharing a serial port into network so that
 it can be accessed with telnet, for example.
 
 The console server allows basically unlimited number of concurrent client connections.
+All clients will see the same serial port data, since it is replicated to all clients.
+
 Write support has to be separately enabled with -w option.
 Otherwise, all tcp connections are read only, i.e. nothing can be written into the serial port.
+If write is enabled, any client can write to the console. The included web client does not
+support writing. Something like `telnet` or `nc` have to be used for that.
 
 A note about security: there is none. No ACL, no encryption, no authentication. Nothing.
 You should probably use this only over ssh connections with tcp port forwarding
 and limit the console server listening only on localhost.
 
 This program was initially written just for learning Rust. It is kind of slightly improved
-re-implementation of old code written in Python.
+re-implementation of my old code written in Python.
 
 ```
 USAGE:
