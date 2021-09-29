@@ -39,14 +39,13 @@ OPTIONS:
         --ser-parity <ser-parity>       [default: N]
         --ser-stopb <ser-stopb>         [default: 1]
     -s, --serial-port <serial-port>     [default: /dev/ttyUSB0]
-
 ```
 
 ## Web client
 
 ```
 USAGE:
-    console-client [FLAGS] [OPTIONS]
+    console-web [FLAGS] [OPTIONS]
 
 FLAGS:
     -d, --debug
@@ -55,9 +54,8 @@ FLAGS:
     -V, --version    Prints version information
 
 OPTIONS:
-    -c, --connect <connect>               [default: 127.0.0.1:24242]
-    -l, --listen <listen>                 [default: 127.0.0.1:8080]
-        --template-dir <template-dir>     [default: templates]
+    -c, --connect <connect>     [default: 127.0.0.1:24242]
+    -l, --listen <listen>       [default: 127.0.0.1:8080]
 ```
 
 The console client starts a small internal web server with `hyper` at the designated listen address.
@@ -76,11 +74,10 @@ characters with underscores. It is a bit brutal but works.
 Sample run:
 
 ```
-$ ./target/debug/console-client
-[2021-07-30T10:09:41Z INFO  console_client] Starting up console-client...
-[2021-07-30T10:09:41Z INFO  console_client] Template directory: templates
-[2021-07-30T10:09:42Z INFO  console_client] Found templates: [console.html.tera]
-[2021-07-30T10:09:44Z INFO  console_client] 127.0.0.1:40968 GET /client
+$ ./target/debug/console-web
+[2021-09-29T12:06:28Z INFO  net_serial_console::startup] Starting up Serial console web...
+[2021-09-29T12:06:28Z INFO  console_web] Listening on 127.0.0.1:8080
+[2021-09-29T12:07:31Z INFO  console_web] 127.0.0.1:54716 GET /console/client
 ```
 
 testing with `wget`:
@@ -91,11 +88,10 @@ $ wget -qS -O- http://localhost:8080/client
   content-type: text/event-stream; charset=utf-8
   cache-control: no-cache
   transfer-encoding: chunked
-  date: Fri, 30 Jul 2021 10:09:44 GMT
+  date: Wed, 29 Sep 2021 12:09:03 GMT
 retry: 999999
 id: 1
 data: *** Connected to: /dev/ttyUSB0
-
 ```
 
 Please note that there was also a console-server running at port 24242
