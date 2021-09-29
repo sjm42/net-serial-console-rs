@@ -1,15 +1,12 @@
 // main.rs
 
-// use sailfish::TemplateOnce;
-
+use anyhow::anyhow;
 use bytes::BytesMut;
 use hyper::service::{make_service_fn, service_fn};
-use hyper::{server::conn::AddrStream, Body, Method, Request, Response, Server, StatusCode};
+use hyper::{http, server::conn::AddrStream, Body, Method, Request, Response, Server, StatusCode};
 use log::*;
-use once_cell::sync::Lazy;
-use parking_lot::RwLock;
 use sailfish::TemplateOnce;
-use std::{convert::Infallible, default::Default, error::Error, net::SocketAddr, time};
+use std::{convert::Infallible, default::Default, net::SocketAddr, time};
 use structopt::StructOpt;
 use tokio::{self, io, net};
 use tokio_util::codec::{Decoder, FramedRead};
@@ -21,115 +18,114 @@ const TEXT_PLAIN: &str = "text/plain; charset=utf-8";
 const TEXT_HTML: &str = "text/html; charset=utf-8";
 const TEXT_EVENT_STREAM: &str = "text/event-stream; charset=utf-8";
 
-static CFG: Lazy<RwLock<OptsConsoleWeb>> = Lazy::new(|| RwLock::new(Default::default()));
-static INDEX: Lazy<RwLock<String>> = Lazy::new(|| RwLock::new(String::new()));
-
-#[derive(TemplateOnce)]
+#[derive(Clone, TemplateOnce)]
 #[template(path = "console.html.stpl", escape = false)]
 struct ConsoleHtml {
     title: String,
     event_url: String,
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+#[derive(Clone, Debug, Default)]
+struct AppCtx {
+    opts: OptsConsoleWeb,
+    index: String,
+}
+
+fn main() -> anyhow::Result<()> {
     let mut opts = OptsConsoleWeb::from_args();
     opts.finish()?;
     start_pgm(&opts.c, "Serial console web");
-    {
-        // Store our config
-        let mut o = CFG.write();
-        *o = opts;
-    }
     // Initialize index html from template
     let tmpl = ConsoleHtml {
         title: "Console".into(),
         event_url: "/console/client".into(),
     };
-    let html = tmpl.render_once()?;
-    {
-        let mut i = INDEX.write();
-        *i = html;
-    }
+    let index = tmpl.render_once()?;
+    let ctx = AppCtx { opts, index };
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
     rt.block_on(async move {
-        run_server().await.unwrap();
+        run_server(ctx).await.unwrap();
     });
     rt.shutdown_timeout(time::Duration::new(5, 0));
     info!("Exit.");
     Ok(())
 }
 
-async fn run_server() -> Result<(), Box<dyn Error>> {
+async fn run_server(ctx: AppCtx) -> anyhow::Result<()> {
+    let addr;
+    {
+        let listen = &ctx.opts.listen;
+        info!("Listening on {}", listen);
+        addr = listen.parse()?;
+    }
+
     let svc = make_service_fn(move |conn: &AddrStream| {
+        let r_ctx = ctx.clone();
         let addr = conn.remote_addr();
-        async move { Ok::<_, Infallible>(service_fn(move |req| req_router(addr, req))) }
+        async move { Ok::<_, Infallible>(service_fn(move |req| req_router(r_ctx.clone(), addr, req))) }
     });
-    let listen = CFG.read().listen.clone();
-    info!("Listening on {}", &listen);
-    let addr = &listen.parse()?;
-    let _srv = Server::bind(addr).serve(svc).await?;
+    let server = Server::bind(&addr).serve(svc);
+    if let Err(e) = server.await {
+        error!("Server error: {}", e);
+        return Err(anyhow!(e));
+    }
     Ok(())
 }
 
-async fn req_router(addr: SocketAddr, req: Request<Body>) -> hyper::Result<Response<Body>> {
+async fn req_router(
+    ctx: AppCtx,
+    addr: SocketAddr,
+    req: Request<Body>,
+) -> http::Result<Response<Body>> {
     info!("{} {} {}", addr, req.method(), req.uri().path());
     match (req.method(), req.uri().path()) {
-        (&Method::GET, "/") | (&Method::GET, "/console/") => index(req).await,
-        (&Method::GET, "/client/") | (&Method::GET, "/console/client/") => client(req).await,
-        _ => Ok(Response::builder()
+        (&Method::GET, "/") | (&Method::GET, "/console/") => index(ctx, req).await,
+        (&Method::GET, "/client/") | (&Method::GET, "/console/client/") => client(ctx, req).await,
+        _ => Response::builder()
             .status(StatusCode::NOT_FOUND)
             .header("Content-Type", TEXT_PLAIN)
-            .body("Not Found".into())
-            .unwrap()),
+            .body("Not Found".into()),
     }
 }
 
-async fn index(_req: Request<Body>) -> hyper::Result<Response<Body>> {
+async fn index(ctx: AppCtx, _req: Request<Body>) -> http::Result<Response<Body>> {
     trace!("in index()");
-    Ok(Response::builder()
+    Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", TEXT_HTML)
-        .body(INDEX.read().clone().into())
-        .unwrap())
+        .body(ctx.index.into())
 }
 
-async fn client(_req: Request<Body>) -> hyper::Result<Response<Body>> {
+async fn client(ctx: AppCtx, _req: Request<Body>) -> http::Result<Response<Body>> {
     trace!("in client()");
-    let addr;
-    {
-        addr = CFG.read().connect.clone();
-    }
-    let conn = net::TcpStream::connect(addr).await;
+    let conn = net::TcpStream::connect(ctx.opts.connect).await;
     if let Err(e) = conn {
         return int_err(format!("Console connection error: {}", e));
     }
 
     let event_codec = EventCodec::new();
     let event_stream = FramedRead::new(conn.unwrap(), event_codec);
-    Ok(Response::builder()
+    Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", TEXT_EVENT_STREAM)
         .header("Cache-Control", "no-cache")
         .body(Body::wrap_stream(event_stream))
-        .unwrap())
 }
 
-fn int_err(e: String) -> hyper::Result<Response<Body>> {
-    Ok(Response::builder()
+fn int_err(e: String) -> http::Result<Response<Body>> {
+    Response::builder()
         .status(StatusCode::INTERNAL_SERVER_ERROR)
         .header("Content-Type", TEXT_PLAIN)
         .body(e.into())
-        .unwrap())
 }
 
 struct EventCodec {
     next_index: usize,
     id: u64,
 }
-
 impl EventCodec {
     pub fn new() -> EventCodec {
         EventCodec {

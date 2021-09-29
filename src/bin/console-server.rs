@@ -1,9 +1,10 @@
 // main.rs
 
+use anyhow::anyhow;
 use log::*;
-use std::{error::Error, net::SocketAddr, process, time};
+use std::{net::SocketAddr, time};
 use structopt::StructOpt;
-use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net;
 use tokio::sync::{broadcast, mpsc};
 use tokio_serial::{self, SerialPortBuilderExt};
@@ -13,7 +14,7 @@ use net_serial_console::*;
 const BUFSZ: usize = 1024;
 const CHANSZ: usize = 256;
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> anyhow::Result<()> {
     let mut opts = OptsConsoleServer::from_args();
     opts.finish()?;
     start_pgm(&opts.c, "Serial console server");
@@ -30,22 +31,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn run_server(opts: OptsConsoleServer) -> io::Result<()> {
-    let port = match tokio_serial::new(&opts.serial_port, opts.ser_baud)
+async fn run_server(opts: OptsConsoleServer) -> anyhow::Result<()> {
+    let port = tokio_serial::new(&opts.serial_port, opts.ser_baud)
         .flow_control(opt_flowcontrol(&opts.ser_flow)?)
         .data_bits(opt_databits(opts.ser_datab)?)
         .parity(opt_parity(&opts.ser_parity)?)
         .stop_bits(opt_stopbits(opts.ser_stopb)?)
-        .open_native_async()
-    {
-        Ok(p) => p,
-        Err(e) => {
-            error!("Failed to open serial port {}", &opts.serial_port);
-            error!("{}", e);
-            error!("Exit.");
-            process::exit(1);
-        }
-    };
+        .open_native_async()?;
     info!(
         "Opened serial port {} with write {}abled.",
         &opts.serial_port,
@@ -118,43 +110,36 @@ async fn handle_listener(
     opts: OptsConsoleServer,
     read_atx: broadcast::Sender<Vec<u8>>,
     write_atx: mpsc::Sender<Vec<u8>>,
-) -> io::Result<()> {
-    let listener = match net::TcpListener::bind(&opts.listen).await {
-        Ok(l) => l,
-        Err(e) => {
-            error!("Failed to listen {}", &opts.listen);
-            error!("{}", e);
-            error!("Exit.");
-            process::exit(1);
-        }
-    };
+) -> anyhow::Result<()> {
+    let listener = net::TcpListener::bind(&opts.listen).await?;
     info!("Listening on {}", &opts.listen);
 
     loop {
         let res = listener.accept().await;
-        match res {
-            Ok((sock, addr)) => {
-                let ser_name = opts.serial_port.clone();
-                let write_enabled = opts.write;
-                let client_read_atx = read_atx.subscribe();
-                let client_write_atx = write_atx.clone();
-                tokio::spawn(async move {
-                    handle_client(
-                        ser_name,
-                        write_enabled,
-                        sock,
-                        addr,
-                        client_read_atx,
-                        client_write_atx,
-                    )
-                    .await
-                    .unwrap()
-                });
-            }
-            Err(e) => {
-                error!("Accept failed: {}", e);
-            }
+        if let Err(e) = res {
+            error!("accept failed: {}", e);
+            continue;
         }
+        let (sock, addr) = res.unwrap();
+        let ser_name = opts.serial_port.clone();
+        let write_enabled = opts.write;
+        let client_read_atx = read_atx.subscribe();
+        let client_write_atx = write_atx.clone();
+        tokio::spawn(async move {
+            let ret = handle_client(
+                ser_name,
+                write_enabled,
+                sock,
+                addr,
+                client_read_atx,
+                client_write_atx,
+            )
+            .await;
+            if let Err(e) = ret {
+                // log errors
+                error!("client error: {}", e);
+            }
+        });
     }
 }
 
@@ -162,7 +147,7 @@ async fn handle_serial(
     mut port: tokio_serial::SerialStream,
     a_send: broadcast::Sender<Vec<u8>>,
     mut a_recv: mpsc::Receiver<Vec<u8>>,
-) -> io::Result<()> {
+) -> anyhow::Result<()> {
     info!("Starting serial IO");
 
     let mut buf = [0; BUFSZ];
@@ -179,7 +164,7 @@ async fn handle_serial(
                         a_send.send(buf[0..n].to_owned()).unwrap();
                     }
                     Err(e) => {
-                        return Err(e);
+                        return Err(anyhow!(e));
                     }
                 }
             }
@@ -198,7 +183,7 @@ async fn handle_client(
     addr: SocketAddr,
     mut rx: broadcast::Receiver<Vec<u8>>,
     tx: mpsc::Sender<Vec<u8>>,
-) -> io::Result<()> {
+) -> anyhow::Result<()> {
     info!("Client connection from {}", addr);
 
     let mut buf = [0; BUFSZ];
@@ -207,25 +192,24 @@ async fn handle_client(
 
     loop {
         tokio::select! {
-            Ok(msg) = rx.recv() => {
-                sock.write_all(msg.as_ref()).await?;
-                sock.flush().await?;
-            }
+                Ok(msg) = rx.recv() => {
+                    sock.write_all(msg.as_ref()).await?;
+                    sock.flush().await?;
+                }
             res = sock.read(&mut buf) => {
-                match res {
-                    Ok(n) => {
-                        if n == 0 {
-                            info!("Client disconnected: {}", addr);
-                            return Ok(());
-                        }
-                        debug!("Socket read: {} bytes <-- {}", n, addr);
-                        // We only react to client input if write_enabled flag is set
-                        // otherwise, data from socket is just thrown away
-                        if write_enabled {
-                            tx.send(buf[0..n].to_owned()).await.unwrap();
-                        }
-                    }
-                    Err(e) => { return Err(e); }
+                if let Err(e) = res {
+                     return Err(anyhow!(e));
+                }
+                let n = res.unwrap();
+                if n == 0 {
+                    info!("Client disconnected: {}", addr);
+                    return Ok(());
+                }
+                debug!("Socket read: {} bytes <-- {}", n, addr);
+                // We only react to client input if write_enabled flag is set
+                // otherwise, data from socket is just thrown away
+                if write_enabled {
+                    tx.send(buf[0..n].to_owned()).await.unwrap();
                 }
             }
         }
