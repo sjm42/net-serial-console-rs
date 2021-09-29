@@ -2,7 +2,7 @@
 
 [package]
 name = "net-serial-console"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["Sami J. Mäkinen <sjm@iki.fi>"]
 description = "Serial console tcp server/multiplexer and web client"
 repository = "https://github.com/sjm42/net-serial-console-rs"
@@ -23,7 +23,7 @@ hyper = { version = "0.14", features = ["full"] }
 log = "0.4"
 sailfish = "0.3"
 structopt = "0.3"
-tokio = { version = "1.11", features = ["full"] }
+tokio = { version = "1.12", features = ["full"] }
 tokio-serial = "5.4"
 tokio-util = { version = "0.6", features = ["full"] }
 
