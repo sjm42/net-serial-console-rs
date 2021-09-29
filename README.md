@@ -80,13 +80,13 @@ $ ./target/debug/console-client
 [2021-07-30T10:09:41Z INFO  console_client] Starting up console-client...
 [2021-07-30T10:09:41Z INFO  console_client] Template directory: templates
 [2021-07-30T10:09:42Z INFO  console_client] Found templates: [console.html.tera]
-[2021-07-30T10:09:44Z INFO  console_client] 127.0.0.1:40968 GET /client/
+[2021-07-30T10:09:44Z INFO  console_client] 127.0.0.1:40968 GET /client
 ```
 
 testing with `wget`:
 
 ```
-$ wget -qS -O- http://localhost:8080/client/
+$ wget -qS -O- http://localhost:8080/client
   HTTP/1.1 200 OK
   content-type: text/event-stream; charset=utf-8
   cache-control: no-cache
