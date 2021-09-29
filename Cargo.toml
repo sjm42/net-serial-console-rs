@@ -2,7 +2,7 @@
 
 [package]
 name = "net-serial-console"
-version = "0.3.2"
+version = "0.3.3"
 authors = ["Sami J. Mäkinen <sjm@iki.fi>"]
 description = "Serial console tcp server/multiplexer and web client"
 repository = "https://github.com/sjm42/net-serial-console-rs"
