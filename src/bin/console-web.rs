@@ -83,7 +83,7 @@ async fn req_router(
     info!("{} {} {}", addr, req.method(), req.uri().path());
     match (req.method(), req.uri().path()) {
         (&Method::GET, "/") | (&Method::GET, "/console/") => index(ctx, req).await,
-        (&Method::GET, "/client/") | (&Method::GET, "/console/client/") => client(ctx, req).await,
+        (&Method::GET, "/client") | (&Method::GET, "/console/client") => client(ctx, req).await,
         _ => Response::builder()
             .status(StatusCode::NOT_FOUND)
             .header("Content-Type", TEXT_PLAIN)
