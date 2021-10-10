@@ -13,6 +13,7 @@ pub struct OptsCommon {
 }
 impl OptsCommon {
     pub fn finish(&mut self) -> anyhow::Result<()> {
+        // do sanity checking or env var expansion etc...
         Ok(())
     }
     fn get_loglevel(&self) -> LevelFilter {
@@ -33,7 +34,7 @@ pub struct OptsConsoleServer {
     #[structopt(short, long, default_value = "127.0.0.1:24242")]
     pub listen: String,
     #[structopt(short, long, default_value = "/dev/ttyUSB0")]
-    pub serial_port: String,
+    pub ser_port: String,
     #[structopt(long, default_value = "none")]
     pub ser_flow: String,
     #[structopt(short = "b", long, default_value = "9600")]
@@ -68,15 +69,9 @@ impl OptsConsoleWeb {
     }
 }
 
-pub fn expand_home(pathname: &mut String) -> anyhow::Result<()> {
-    let home = env::var("HOME")?;
-    *pathname = pathname.as_str().replace("$HOME", &home);
-    Ok(())
-}
-
-pub fn start_pgm(c: &OptsCommon, desc: &str) {
+pub fn start_pgm(opts: &OptsCommon, desc: &str) {
     env_logger::Builder::new()
-        .filter_level(c.get_loglevel())
+        .filter_level(opts.get_loglevel())
         .format_timestamp_secs()
         .init();
     info!("Starting up {}...", desc);

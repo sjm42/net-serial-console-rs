@@ -19,20 +19,22 @@ fn main() -> anyhow::Result<()> {
     opts.finish()?;
     start_pgm(&opts.c, "Serial console server");
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
+    let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
 
-    rt.block_on(async move {
-        run_server(opts).await.unwrap();
+    runtime.block_on(async move {
+        if let Err(e) = run_server(opts).await {
+            error!("Error: {}", e);
+        }
     });
-    rt.shutdown_timeout(time::Duration::new(5, 0));
+    runtime.shutdown_timeout(time::Duration::new(5, 0));
     info!("Exit.");
     Ok(())
 }
 
 async fn run_server(opts: OptsConsoleServer) -> anyhow::Result<()> {
-    let port = tokio_serial::new(&opts.serial_port, opts.ser_baud)
+    let port = tokio_serial::new(&opts.ser_port, opts.ser_baud)
         .flow_control(opt_flowcontrol(&opts.ser_flow)?)
         .data_bits(opt_databits(opts.ser_datab)?)
         .parity(opt_parity(&opts.ser_parity)?)
@@ -40,7 +42,7 @@ async fn run_server(opts: OptsConsoleServer) -> anyhow::Result<()> {
         .open_native_async()?;
     info!(
         "Opened serial port {} with write {}abled.",
-        &opts.serial_port,
+        &opts.ser_port,
         if opts.write { "en" } else { "dis" }
     );
 
@@ -95,7 +97,6 @@ fn opt_parity(parity: &str) -> tokio_serial::Result<tokio_serial::Parity> {
 }
 
 fn opt_stopbits(bits: u32) -> tokio_serial::Result<tokio_serial::StopBits> {
-    // let foo = serial::Error::new("");
     match bits {
         1 => Ok(tokio_serial::StopBits::One),
         2 => Ok(tokio_serial::StopBits::Two),
@@ -121,7 +122,7 @@ async fn handle_listener(
             continue;
         }
         let (sock, addr) = res.unwrap();
-        let ser_name = opts.serial_port.clone();
+        let ser_name = opts.ser_port.clone();
         let write_enabled = opts.write;
         let client_read_atx = read_atx.subscribe();
         let client_write_atx = write_atx.clone();
@@ -156,7 +157,7 @@ async fn handle_serial(
             res = port.read(&mut buf) => {
                 match res {
                     Ok(0) => {
-                        info!("Serial disconnected.");
+                        info!("Serial <EOF>");
                         return Ok(());
                     }
                     Ok(n) => {

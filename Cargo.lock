@@ -511,7 +511,7 @@ dependencies = [
 
 [[package]]
 name = "net-serial-console"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "anyhow",
  "build-data",
