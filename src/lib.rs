@@ -2,9 +2,8 @@
 
 // pub use sailfish::TemplateOnce;
 
-mod startup;
+pub mod startup;
 pub use startup::*;
-mod event;
-pub use event::*;
+pub mod event;
 
 // EOF

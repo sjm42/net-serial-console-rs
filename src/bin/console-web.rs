@@ -1,15 +1,16 @@
-// main.rs
+// console-web.rs
 
 use anyhow::anyhow;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{http, server::conn::AddrStream, Body, Method, Request, Response, Server, StatusCode};
 use log::*;
-use net_serial_console::*;
 use sailfish::TemplateOnce;
 use std::{convert::Infallible, net::SocketAddr, sync::Arc, time};
 use structopt::StructOpt;
 use tokio::net;
 use tokio_util::codec::FramedRead;
+
+use net_serial_console::*;
 
 const TEXT_HTML: &str = "text/html; charset=utf-8";
 const TEXT_PLAIN: &str = "text/plain; charset=utf-8";
@@ -106,7 +107,7 @@ async fn client(ctx: &AppCtx, _req: Request<Body>) -> http::Result<Response<Body
         );
     }
 
-    let event_codec = EventCodec::new();
+    let event_codec = event::EventCodec::new();
     let event_stream = FramedRead::new(conn.unwrap(), event_codec);
     Response::builder()
         .status(StatusCode::OK)

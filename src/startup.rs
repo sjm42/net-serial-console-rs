@@ -16,7 +16,7 @@ impl OptsCommon {
         // do sanity checking or env var expansion etc...
         Ok(())
     }
-    fn get_loglevel(&self) -> LevelFilter {
+    pub fn get_loglevel(&self) -> LevelFilter {
         if self.trace {
             LevelFilter::Trace
         } else if self.debug {
@@ -37,7 +37,7 @@ pub struct OptsConsoleServer {
     pub ser_port: String,
     #[structopt(long, default_value = "none")]
     pub ser_flow: String,
-    #[structopt(short = "b", long, default_value = "9600")]
+    #[structopt(short = "b", long, default_value = "115200")]
     pub ser_baud: u32,
     #[structopt(long, default_value = "8")]
     pub ser_datab: u32,
@@ -80,5 +80,4 @@ pub fn start_pgm(opts: &OptsCommon, desc: &str) {
     debug!("Source timestamp: {}", env!("SOURCE_TIMESTAMP"));
     debug!("Compiler version: {}", env!("RUSTC_VERSION"));
 }
-
 // EOF

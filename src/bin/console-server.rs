@@ -1,4 +1,4 @@
-// main.rs
+// console-server.rs
 
 use anyhow::anyhow;
 use log::*;
@@ -59,6 +59,118 @@ async fn run_server(opts: OptsConsoleServer) -> anyhow::Result<()> {
     handle_serial(port, read_tx, write_rx).await
 }
 
+async fn handle_serial(
+    mut port: tokio_serial::SerialStream,
+    a_send: broadcast::Sender<Vec<u8>>,
+    mut a_recv: mpsc::Receiver<Vec<u8>>,
+) -> anyhow::Result<()> {
+    info!("Starting serial IO");
+
+    let mut buf = [0; BUFSZ];
+    loop {
+        tokio::select! {
+            Some(msg) = a_recv.recv() => {
+                debug!("serial write {} bytes", msg.len());
+                port.write_all(msg.as_ref()).await?;
+            }
+
+            res = port.read(&mut buf) => {
+                match res {
+                    Ok(0) => {
+                        info!("Serial <EOF>");
+                        return Ok(());
+                    }
+                    Ok(n) => {
+                        debug!("Serial read {} bytes.", n);
+                        a_send.send(buf[0..n].to_owned()).unwrap();
+                    }
+                    Err(e) => {
+                        return Err(anyhow!(e));
+                    }
+                }
+            }
+        }
+    }
+}
+
+async fn handle_listener(
+    opts: OptsConsoleServer,
+    read_atx: broadcast::Sender<Vec<u8>>,
+    write_atx: mpsc::Sender<Vec<u8>>,
+) -> anyhow::Result<()> {
+    let listener = net::TcpListener::bind(&opts.listen).await?;
+    info!("Listening on {}", &opts.listen);
+
+    loop {
+        let res = listener.accept().await;
+        if let Err(e) = res {
+            error!("accept failed: {}", e);
+            continue;
+        }
+        let (sock, addr) = res.unwrap();
+        let ser_name = opts.ser_port.clone();
+        let write_enabled = opts.write;
+        let client_read_atx = read_atx.subscribe();
+        let client_write_atx = write_atx.clone();
+        tokio::spawn(async move {
+            let ret = handle_client(
+                ser_name,
+                write_enabled,
+                sock,
+                addr,
+                client_read_atx,
+                client_write_atx,
+            )
+            .await;
+            if let Err(e) = ret {
+                // log errors
+                error!("client error: {}", e);
+            }
+        });
+    }
+}
+
+async fn handle_client(
+    ser_name: String,
+    write_enabled: bool,
+    mut sock: net::TcpStream,
+    addr: SocketAddr,
+    mut rx: broadcast::Receiver<Vec<u8>>,
+    tx: mpsc::Sender<Vec<u8>>,
+) -> anyhow::Result<()> {
+    info!("Client connection from {}", addr);
+
+    let mut buf = [0; BUFSZ];
+    sock.write_all(format!("*** Connected to: {}\n", &ser_name).as_bytes())
+        .await?;
+
+    loop {
+        tokio::select! {
+            Ok(msg) = rx.recv() => {
+                sock.write_all(msg.as_ref()).await?;
+                sock.flush().await?;
+            }
+
+            res = sock.read(&mut buf) => {
+                if let Err(e) = res {
+                     return Err(anyhow!(e));
+                }
+                let n = res.unwrap();
+                if n == 0 {
+                    info!("Client disconnected: {}", addr);
+                    return Ok(());
+                }
+                debug!("Socket read: {} bytes <-- {}", n, addr);
+                // We only react to client input if write_enabled flag is set
+                // otherwise, data from socket is just thrown away
+                if write_enabled {
+                    tx.send(buf[0..n].to_owned()).await?;
+                }
+            }
+        }
+    }
+}
+
 fn opt_flowcontrol(flowcontrol: &str) -> tokio_serial::Result<tokio_serial::FlowControl> {
     match flowcontrol {
         "N" | "n" | "NONE" | "none" => Ok(tokio_serial::FlowControl::None),
@@ -104,116 +216,6 @@ fn opt_stopbits(bits: u32) -> tokio_serial::Result<tokio_serial::StopBits> {
             tokio_serial::ErrorKind::InvalidInput,
             "invalid stopbits",
         )),
-    }
-}
-
-async fn handle_listener(
-    opts: OptsConsoleServer,
-    read_atx: broadcast::Sender<Vec<u8>>,
-    write_atx: mpsc::Sender<Vec<u8>>,
-) -> anyhow::Result<()> {
-    let listener = net::TcpListener::bind(&opts.listen).await?;
-    info!("Listening on {}", &opts.listen);
-
-    loop {
-        let res = listener.accept().await;
-        if let Err(e) = res {
-            error!("accept failed: {}", e);
-            continue;
-        }
-        let (sock, addr) = res.unwrap();
-        let ser_name = opts.ser_port.clone();
-        let write_enabled = opts.write;
-        let client_read_atx = read_atx.subscribe();
-        let client_write_atx = write_atx.clone();
-        tokio::spawn(async move {
-            let ret = handle_client(
-                ser_name,
-                write_enabled,
-                sock,
-                addr,
-                client_read_atx,
-                client_write_atx,
-            )
-            .await;
-            if let Err(e) = ret {
-                // log errors
-                error!("client error: {}", e);
-            }
-        });
-    }
-}
-
-async fn handle_serial(
-    mut port: tokio_serial::SerialStream,
-    a_send: broadcast::Sender<Vec<u8>>,
-    mut a_recv: mpsc::Receiver<Vec<u8>>,
-) -> anyhow::Result<()> {
-    info!("Starting serial IO");
-
-    let mut buf = [0; BUFSZ];
-    loop {
-        tokio::select! {
-            res = port.read(&mut buf) => {
-                match res {
-                    Ok(0) => {
-                        info!("Serial <EOF>");
-                        return Ok(());
-                    }
-                    Ok(n) => {
-                        debug!("Serial read {} bytes.", n);
-                        a_send.send(buf[0..n].to_owned()).unwrap();
-                    }
-                    Err(e) => {
-                        return Err(anyhow!(e));
-                    }
-                }
-            }
-            Some(msg) = a_recv.recv() => {
-                debug!("serial write {} bytes", msg.len());
-                port.write_all(msg.as_ref()).await?;
-            }
-        }
-    }
-}
-
-async fn handle_client(
-    ser_name: String,
-    write_enabled: bool,
-    mut sock: net::TcpStream,
-    addr: SocketAddr,
-    mut rx: broadcast::Receiver<Vec<u8>>,
-    tx: mpsc::Sender<Vec<u8>>,
-) -> anyhow::Result<()> {
-    info!("Client connection from {}", addr);
-
-    let mut buf = [0; BUFSZ];
-    sock.write_all(format!("*** Connected to: {}\n", &ser_name).as_bytes())
-        .await?;
-
-    loop {
-        tokio::select! {
-                Ok(msg) = rx.recv() => {
-                    sock.write_all(msg.as_ref()).await?;
-                    sock.flush().await?;
-                }
-            res = sock.read(&mut buf) => {
-                if let Err(e) = res {
-                     return Err(anyhow!(e));
-                }
-                let n = res.unwrap();
-                if n == 0 {
-                    info!("Client disconnected: {}", addr);
-                    return Ok(());
-                }
-                debug!("Socket read: {} bytes <-- {}", n, addr);
-                // We only react to client input if write_enabled flag is set
-                // otherwise, data from socket is just thrown away
-                if write_enabled {
-                    tx.send(buf[0..n].to_owned()).await.unwrap();
-                }
-            }
-        }
     }
 }
 // EOF
