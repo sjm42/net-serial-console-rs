@@ -74,7 +74,7 @@ pub fn start_pgm(opts: &OptsCommon, desc: &str) {
         .filter_level(opts.get_loglevel())
         .format_timestamp_secs()
         .init();
-    info!("Starting up {}...", desc);
+    info!("Starting up {desc}...");
     debug!("Git branch: {}", env!("GIT_BRANCH"));
     debug!("Git commit: {}", env!("GIT_COMMIT"));
     debug!("Source timestamp: {}", env!("SOURCE_TIMESTAMP"));

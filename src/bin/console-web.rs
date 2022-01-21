@@ -61,7 +61,7 @@ async fn run_server(opts: OptsConsoleWeb) -> anyhow::Result<()> {
 
     let listen = &opts.listen;
     let addr = listen.parse()?;
-    info!("Listening on {}", listen);
+    info!("Listening on {listen}");
 
     let svc = make_service_fn(move |conn: &AddrStream| {
         let ctx_r = ctx.clone();
@@ -70,7 +70,7 @@ async fn run_server(opts: OptsConsoleWeb) -> anyhow::Result<()> {
     });
     let server = Server::bind(&addr).serve(svc);
     if let Err(e) = server.await {
-        error!("Server error: {}", e);
+        error!("Server error: {e:?}");
         return Err(anyhow!(e));
     }
     Ok(())
@@ -81,7 +81,11 @@ async fn req_router(
     addr: SocketAddr,
     req: Request<Body>,
 ) -> http::Result<Response<Body>> {
-    info!("{} {} {}", addr, req.method(), req.uri().path());
+    info!(
+        "{addr} {method} {path}",
+        method = req.method(),
+        path = req.uri().path()
+    );
     match (req.method(), req.uri().path()) {
         (&Method::GET, "/") | (&Method::GET, "/console/") => index(&ctx, req).await,
         (&Method::GET, "/client") | (&Method::GET, "/console/client") => client(&ctx, req).await,
@@ -103,7 +107,7 @@ async fn client(ctx: &AppCtx, _req: Request<Body>) -> http::Result<Response<Body
     if let Err(e) = conn {
         return err_response(
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Console connection error: {}", e),
+            format!("Console connection error: {e:?}"),
         );
     }
 

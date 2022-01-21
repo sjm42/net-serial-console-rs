@@ -53,10 +53,10 @@ impl Decoder for EventCodec {
                 let s = &String::from_utf8_lossy(line_out);
                 let s_printable = s.replace(|c: char| !is_printable_ascii(c), "_");
                 let ev = format!(
-                    "retry: 999999\r\nid: {}\r\ndata: {}\r\n\r\n",
-                    self.id, s_printable
+                    "retry: 999999\r\nid: {id}\r\ndata: {s_printable}\r\n\r\n",
+                    id = self.id
                 );
-                debug!("id {} data: {}", self.id, s_printable);
+                debug!("id {id} data: {s_printable}", id = self.id);
                 Ok(Some(ev))
             }
             None => {

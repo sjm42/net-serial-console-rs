@@ -81,7 +81,7 @@ async fn handle_serial(
                         return Ok(());
                     }
                     Ok(n) => {
-                        debug!("Serial read {} bytes.", n);
+                        debug!("Serial read {n} bytes.");
                         a_send.send(buf[0..n].to_owned()).unwrap();
                     }
                     Err(e) => {
@@ -104,7 +104,7 @@ async fn handle_listener(
     loop {
         let res = listener.accept().await;
         if let Err(e) = res {
-            error!("accept failed: {}", e);
+            error!("accept failed: {e:?}");
             continue;
         }
         let (sock, addr) = res.unwrap();
@@ -124,7 +124,7 @@ async fn handle_listener(
             .await;
             if let Err(e) = ret {
                 // log errors
-                error!("client error: {}", e);
+                error!("client error: {e:?}");
             }
         });
     }
@@ -138,10 +138,10 @@ async fn handle_client(
     mut rx: broadcast::Receiver<Vec<u8>>,
     tx: mpsc::Sender<Vec<u8>>,
 ) -> anyhow::Result<()> {
-    info!("Client connection from {}", addr);
+    info!("Client connection from {addr:?}");
 
     let mut buf = [0; BUFSZ];
-    sock.write_all(format!("*** Connected to: {}\n", &ser_name).as_bytes())
+    sock.write_all(format!("*** Connected to: {ser_name}\n").as_bytes())
         .await?;
 
     loop {
@@ -157,10 +157,10 @@ async fn handle_client(
                 }
                 let n = res.unwrap();
                 if n == 0 {
-                    info!("Client disconnected: {}", addr);
+                    info!("Client disconnected: {addr:?}");
                     return Ok(());
                 }
-                debug!("Socket read: {} bytes <-- {}", n, addr);
+                debug!("Socket read: {n} bytes <-- {addr:?}");
                 // We only react to client input if write_enabled flag is set
                 // otherwise, data from socket is just thrown away
                 if write_enabled {
