@@ -10,7 +10,6 @@ readme = "README.md"
 keywords = ["serial", "console", "multiplex"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
-resolver = "2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
