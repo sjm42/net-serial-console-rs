@@ -655,18 +655,18 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.26"
+version = "1.0.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a152013215dca273577e18d2bf00fa862b89b24169fb78c4c95aeb07992c9cec"
+checksum = "c7342d5883fbccae1cc37a2353b09c87c9b0f3afd73f5fb9bba687a1f733b029"
 dependencies = [
  "unicode-xid",
 ]
 
 [[package]]
 name = "quote"
-version = "1.0.11"
+version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3dff9853339d4a5b75094c8edd65c3a0e81da8281855332d79559ddd8591b236"
+checksum = "864d3e96a899863136fc6e99f3d7cae289dafe43bf2c5ac19b70df7210c0a145"
 dependencies = [
  "proc-macro2",
 ]
@@ -758,9 +758,9 @@ dependencies = [
 
 [[package]]
 name = "sailfish"
-version = "0.3.3"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "816920a08514d9741242b3efe70c16c350ed548bc4a5ba03426e56faf9d45f77"
+checksum = "31f030905cfc5f869b6784dc4e5c83a20d1f77c92bae1a0d158baf9404100c3e"
 dependencies = [
  "itoap",
  "ryu",
@@ -770,9 +770,9 @@ dependencies = [
 
 [[package]]
 name = "sailfish-compiler"
-version = "0.3.3"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4276e7b848bde8e7813d534f014bc35ce5acd2b9e2b6b075727113fcf478ba63"
+checksum = "f7a8620f80b37af2e55153ee142bfdb8085f30c454be453e922466d483b0d184"
 dependencies = [
  "filetime",
  "home",
@@ -785,9 +785,9 @@ dependencies = [
 
 [[package]]
 name = "sailfish-macros"
-version = "0.3.3"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6bba2458ef07ae12c9aed2edb866c3db2f9c21cf19a2c3f2613b2982bc1a4a46"
+checksum = "b31ded532bded4637d49297e3247476ebc266efab4b054dc48037fa88846fdeb"
 dependencies = [
  "proc-macro2",
  "sailfish-compiler",
@@ -878,9 +878,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.80"
+version = "1.0.86"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d010a1623fbd906d51d650a9916aaefc05ffa0e4053ff7fe601167f3e715d194"
+checksum = "8a65b3f4ffa0092e9887669db0eae07941f023991ab58ea44da8fe8e2d511c6b"
 dependencies = [
  "proc-macro2",
  "quote",
