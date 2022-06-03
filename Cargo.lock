@@ -469,7 +469,7 @@ checksum = "531e0f6dc55a5aa7b8d320407c5c4ced464e23815c60f6a1e6d9e225d2b45905"
 dependencies = [
  "log",
  "mio",
- "nix",
+ "nix 0.23.1",
  "serialport",
  "winapi",
 ]
@@ -503,6 +503,17 @@ dependencies = [
  "cfg-if",
  "libc",
  "memoffset",
+]
+
+[[package]]
+name = "nix"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f17df307904acd05aa8e32e97bb20f2a0df1728bbc2d771ae8f9a90463441e9"
+dependencies = [
+ "bitflags",
+ "cfg-if",
+ "libc",
 ]
 
 [[package]]
@@ -768,16 +779,16 @@ dependencies = [
 
 [[package]]
 name = "serialport"
-version = "4.1.0"
+version = "4.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fc52fd78198e211d0e39928cbca339da52f679f4a964cdf335b33fc1855f63f"
+checksum = "aab92efb5cf60ad310548bc3f16fa6b0d950019cb7ed8ff41968c3d03721cf12"
 dependencies = [
  "CoreFoundation-sys",
  "IOKit-sys",
  "bitflags",
  "cfg-if",
  "mach 0.3.2",
- "nix",
+ "nix 0.24.1",
  "regex",
  "winapi",
 ]
