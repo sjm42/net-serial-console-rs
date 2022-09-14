@@ -82,7 +82,7 @@ async fn handle_serial(
                     }
                     Ok(n) => {
                         debug!("Serial read {n} bytes.");
-                        a_send.send(buf[0..n].to_owned()).unwrap();
+                        a_send.send(buf[0..n].to_owned())?;
                     }
                     Err(e) => {
                         return Err(anyhow!(e));
@@ -102,12 +102,14 @@ async fn handle_listener(
     info!("Listening on {}", &opts.listen);
 
     loop {
-        let res = listener.accept().await;
-        if let Err(e) = res {
-            error!("accept failed: {e:?}");
-            continue;
-        }
-        let (sock, addr) = res.unwrap();
+        let (sock, addr) = match listener.accept().await {
+            Err(e) => {
+                error!("accept failed: {e:?}");
+                continue;
+            }
+            Ok(x) => x,
+        };
+
         let ser_name = opts.ser_port.clone();
         let write_enabled = opts.write;
         let client_read_atx = read_atx.subscribe();
@@ -152,10 +154,13 @@ async fn handle_client(
             }
 
             res = sock.read(&mut buf) => {
-                if let Err(e) = res {
-                     return Err(anyhow!(e));
-                }
-                let n = res.unwrap();
+                let n = match res {
+                    Err(e) => {
+                        return Err(anyhow!(e));
+                    },
+                    Ok(x) => x
+                };
+
                 if n == 0 {
                     info!("Client disconnected: {addr:?}");
                     return Ok(());

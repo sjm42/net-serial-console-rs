@@ -103,16 +103,18 @@ async fn index(ctx: &AppCtx, _req: Request<Body>) -> http::Result<Response<Body>
 
 async fn client(ctx: &AppCtx, _req: Request<Body>) -> http::Result<Response<Body>> {
     trace!("in client()");
-    let conn = net::TcpStream::connect(ctx.connect.as_ref()).await;
-    if let Err(e) = conn {
-        return err_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Console connection error: {e:?}"),
-        );
-    }
+    let conn = match net::TcpStream::connect(ctx.connect.as_ref()).await {
+        Err(e) => {
+            return err_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Console connection error: {e:?}"),
+            );
+        }
+        Ok(c) => c,
+    };
 
     let event_codec = event::EventCodec::new();
-    let event_stream = FramedRead::new(conn.unwrap(), event_codec);
+    let event_stream = FramedRead::new(conn, event_codec);
     Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", TEXT_EVENT_STREAM)
