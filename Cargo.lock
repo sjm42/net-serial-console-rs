@@ -684,7 +684,7 @@ dependencies = [
 
 [[package]]
 name = "net-serial-console"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "anyhow",
  "build-data",
@@ -938,9 +938,9 @@ dependencies = [
 
 [[package]]
 name = "sailfish"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79aef0b4612749106d372dfdeee715082f2f0fe24263be08e19db9b00b694bf9"
+checksum = "dd1369644089e936dea5df0d6201636e2b6eb2e9ad098efb2eca5606ece3fab7"
 dependencies = [
  "itoap",
  "ryu",
@@ -950,9 +950,9 @@ dependencies = [
 
 [[package]]
 name = "sailfish-compiler"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "787ef14715822299715d98d6eb6157f03a57a5258ffbd3321847f7450853dd64"
+checksum = "761019f0de360c654d51e068f07acfa8677e9566391ca290e1ab7c53a55d8d02"
 dependencies = [
  "filetime",
  "home",
@@ -966,9 +966,9 @@ dependencies = [
 
 [[package]]
 name = "sailfish-macros"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0d39ce164c9e19147bcc4fa9ce9dcfc0a451e6cd0a996bb896fc7dee92887a4"
+checksum = "dad9a1a51d085aa939115cf537c71b1e438de7d27363a039ce525bf393262303"
 dependencies = [
  "proc-macro2",
  "sailfish-compiler",
