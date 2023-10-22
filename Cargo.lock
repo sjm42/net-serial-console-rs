@@ -947,9 +947,9 @@ dependencies = [
 
 [[package]]
 name = "sailfish"
-version = "0.8.1"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7861181faa2e413410444757deca246c70959cee725fbfd8f736a94a660eb377"
+checksum = "acd5f4680149b62b3478f6af08a8f1c37794bc1bc577e28874a4d0c70084d600"
 dependencies = [
  "itoap",
  "ryu",
@@ -959,9 +959,9 @@ dependencies = [
 
 [[package]]
 name = "sailfish-compiler"
-version = "0.8.1"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c38d77ced03b393e820ac70109857bd857f93e746f5d7d631829c9ee2e4f3fa"
+checksum = "67087aca4a3886686a88cee6835089c53e6143a0b8c5be01e63e4fe2f6dfe7cb"
 dependencies = [
  "filetime",
  "home",
@@ -975,9 +975,9 @@ dependencies = [
 
 [[package]]
 name = "sailfish-macros"
-version = "0.8.1"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8f73db14456f861a5c89166ab6ac76afd94b4d2a9416638ae2952ae051089c5"
+checksum = "e47e31910c5f9230e99992568d05a5968fe4f42a635c3f912c993e9f66a619a5"
 dependencies = [
  "proc-macro2",
  "sailfish-compiler",
@@ -1212,9 +1212,9 @@ dependencies = [
 
 [[package]]
 name = "toml"
-version = "0.7.8"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd79e69d3b627db300ff956027cc6c3798cef26d22526befdfcd12feeb6d2257"
+checksum = "185d8ab0dfbb35cf1399a6344d8484209c088f75f8f68230da55d48d95d43e3d"
 dependencies = [
  "serde",
  "serde_spanned",
@@ -1233,9 +1233,9 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.19.15"
+version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b5bb770da30e5cbfde35a2d7b9b8a2c4b8ef89548a7a6aeab5c9a576e3e7421"
+checksum = "396e4d48bbb2b7554c944bde63101b5ae446cff6ec4a24227428f15eb72ef338"
 dependencies = [
  "indexmap 2.0.2",
  "serde",
