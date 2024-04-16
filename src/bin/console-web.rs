@@ -1,12 +1,16 @@
 // console-web.rs
 
-use anyhow::anyhow;
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{http, server::conn::AddrStream, Body, Method, Request, Response, Server, StatusCode};
-use log::*;
+use std::{net::SocketAddr, sync::Arc, time};
+
+use axum::{
+    body::Body,
+    extract::State,
+    http::{header, Response, StatusCode},
+    response::IntoResponse,
+    routing::*,
+};
+use clap::Parser;
 use sailfish::TemplateOnce;
-use std::{convert::Infallible, net::SocketAddr, sync::Arc, time};
-use structopt::StructOpt;
 use tokio::net;
 use tokio_util::codec::FramedRead;
 
@@ -30,9 +34,9 @@ struct AppCtx {
 }
 
 fn main() -> anyhow::Result<()> {
-    let mut opts = OptsConsoleWeb::from_args();
-    opts.finish()?;
-    start_pgm(&opts.c, "Serial console web");
+    let mut opts = OptsConsoleWeb::parse();
+    opts.finalize()?;
+    opts.c.start_pgm(env!("CARGO_BIN_NAME"));
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -53,55 +57,38 @@ async fn run_server(opts: OptsConsoleWeb) -> anyhow::Result<()> {
         title: "Console".into(),
         event_url: "/console/client".into(),
     };
-    let index = tmpl.render_once()?;
+    let index_html = tmpl.render_once()?;
     let ctx = AppCtx {
         connect: Arc::new(opts.connect),
-        index: Arc::new(index),
+        index: Arc::new(index_html),
     };
+    let shared_ctx = Arc::new(ctx);
 
-    let listen = &opts.listen;
-    let addr = listen.parse()?;
-    info!("Listening on {listen}");
 
-    let svc = make_service_fn(move |conn: &AddrStream| {
-        let ctx_r = ctx.clone();
-        let addr = conn.remote_addr();
-        async move { Ok::<_, Infallible>(service_fn(move |req| req_router(ctx_r.clone(), addr, req))) }
-    });
-    let server = Server::bind(&addr).serve(svc);
-    if let Err(e) = server.await {
-        error!("Server error: {e:?}");
-        return Err(anyhow!(e));
-    }
-    Ok(())
+    let addr = opts.listen.parse::<SocketAddr>()?;
+    info!("Listening on {addr}");
+
+    let app = Router::new()
+        .route("/", get(index))
+        .route("/console/", get(index))
+        .route("/client", get(client))
+        .route("/console/client", get(client))
+        .with_state(shared_ctx);
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    Ok(axum::serve(listener, app.into_make_service()).await?)
 }
 
-async fn req_router(
-    ctx: AppCtx,
-    addr: SocketAddr,
-    req: Request<Body>,
-) -> http::Result<Response<Body>> {
-    info!(
-        "{addr} {method} {path}",
-        method = req.method(),
-        path = req.uri().path()
-    );
-    match (req.method(), req.uri().path()) {
-        (&Method::GET, "/") | (&Method::GET, "/console/") => index(&ctx, req).await,
-        (&Method::GET, "/client") | (&Method::GET, "/console/client") => client(&ctx, req).await,
-        _ => err_response(StatusCode::NOT_FOUND, "Not found".into()),
-    }
-}
 
-async fn index(ctx: &AppCtx, _req: Request<Body>) -> http::Result<Response<Body>> {
+async fn index(State(ctx): State<Arc<AppCtx>>) -> Response<Body> {
     trace!("in index()");
-    Response::builder()
-        .status(StatusCode::OK)
-        .header("Content-Type", TEXT_HTML)
-        .body(ctx.index.as_ref().to_owned().into())
+
+
+    (StatusCode::OK,
+     [(header::CONTENT_TYPE, TEXT_HTML)],
+     ctx.index.as_ref().to_string()).into_response()
 }
 
-async fn client(ctx: &AppCtx, _req: Request<Body>) -> http::Result<Response<Body>> {
+async fn client(State(ctx): State<Arc<AppCtx>>) -> Response<Body> {
     trace!("in client()");
     let conn = match net::TcpStream::connect(ctx.connect.as_ref()).await {
         Err(e) => {
@@ -115,17 +102,18 @@ async fn client(ctx: &AppCtx, _req: Request<Body>) -> http::Result<Response<Body
 
     let event_codec = event::EventCodec::new();
     let event_stream = FramedRead::new(conn, event_codec);
-    Response::builder()
-        .status(StatusCode::OK)
-        .header("Content-Type", TEXT_EVENT_STREAM)
-        .header("Cache-Control", "no-cache")
-        .body(Body::wrap_stream(event_stream))
+
+    (StatusCode::OK,
+     [(header::CONTENT_TYPE, TEXT_EVENT_STREAM), (header::CACHE_CONTROL, "no-cache")],
+     Body::from_stream(event_stream)
+    ).into_response()
 }
 
-fn err_response(code: StatusCode, errmsg: String) -> http::Result<Response<Body>> {
-    Response::builder()
-        .status(code)
-        .header("Content-Type", TEXT_PLAIN)
-        .body(errmsg.into())
+fn err_response(code: StatusCode, errmsg: String) -> Response<Body> {
+    (
+        code,
+        [(header::CONTENT_TYPE, TEXT_PLAIN)],
+        errmsg
+    ).into_response()
 }
 // EOF

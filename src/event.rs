@@ -1,9 +1,10 @@
 // event.rs
 
 use bytes::BytesMut;
-use log::*;
 use tokio::io;
 use tokio_util::codec::Decoder;
+
+use crate::*;
 
 const LINE_WRAP: usize = 80;
 
@@ -12,6 +13,7 @@ pub struct EventCodec {
     next_index: usize,
     id: u64,
 }
+
 impl EventCodec {
     pub fn new() -> EventCodec {
         EventCodec {

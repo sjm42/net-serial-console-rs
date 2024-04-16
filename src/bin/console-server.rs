@@ -1,9 +1,9 @@
 // console-server.rs
 
-use anyhow::anyhow;
-use log::*;
 use std::{net::SocketAddr, time};
-use structopt::StructOpt;
+
+use anyhow::anyhow;
+use clap::Parser;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net;
 use tokio::sync::{broadcast, mpsc};
@@ -15,9 +15,9 @@ const BUFSZ: usize = 1024;
 const CHANSZ: usize = 256;
 
 fn main() -> anyhow::Result<()> {
-    let mut opts = OptsConsoleServer::from_args();
-    opts.finish()?;
-    start_pgm(&opts.c, "Serial console server");
+    let mut opts = OptsConsoleServer::parse();
+    opts.finalize()?;
+    opts.c.start_pgm(env!("CARGO_BIN_NAME"));
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -34,7 +34,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 async fn run_server(opts: OptsConsoleServer) -> anyhow::Result<()> {
-    let port = tokio_serial::new(&opts.ser_port, opts.ser_baud)
+    let port = tokio_serial::new(&opts.ser_port, opts.baud)
         .flow_control(opt_flowcontrol(&opts.ser_flow)?)
         .data_bits(opt_databits(opts.ser_datab)?)
         .parity(opt_parity(&opts.ser_parity)?)
@@ -123,7 +123,7 @@ async fn handle_listener(
                 client_read_atx,
                 client_write_atx,
             )
-            .await;
+                .await;
             if let Err(e) = ret {
                 // log errors
                 error!("client error: {e:?}");
