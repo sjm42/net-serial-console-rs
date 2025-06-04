@@ -920,18 +920,18 @@ checksum = "f29841ed0a577196bca5b753cd4e4022fa50b718e56fc0d35919ed32e20ec65c"
 
 [[package]]
 name = "safe-proc-macro2"
-version = "1.0.94"
+version = "1.0.95"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdb2493004725bd1fdc167b7bd341125c4d0ffb45395d31741fa139d71b90525"
+checksum = "492d1a72624b0bd5b7f0193ea5834a1905534a517573a117e949e895f342906c"
 dependencies = [
  "unicode-xid",
 ]
 
 [[package]]
 name = "safe-quote"
-version = "1.0.39"
+version = "1.0.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "571eb18c5e2ecd0a8221706807c30a1194b42fb15bd8bc589625706dc26ba722"
+checksum = "bcaa9a650f2f98ba4da0190623210c85945cb78b262709f606c57655eda173e1"
 dependencies = [
  "safe-proc-macro2",
 ]
@@ -1311,9 +1311,9 @@ dependencies = [
 
 [[package]]
 name = "tower-http"
-version = "0.6.5"
+version = "0.6.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cc2d9e086a412a451384326f521c8123a99a466b329941a9403696bff9b0da2"
+checksum = "adc82fd73de2a9722ac5da747f12383d2bfdb93591ee6c58486e0097890f05f2"
 dependencies = [
  "bitflags 2.9.1",
  "bytes",
