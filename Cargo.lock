@@ -967,9 +967,9 @@ dependencies = [
 
 [[package]]
 name = "sailfish"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4d5cd6d4f24f3ab107e949ab424738cf55b03deddce3b184c46985d7b1394ef"
+checksum = "19206b115d41c790b0e47fa7849a99a10499244105c5795585397db200892d9b"
 dependencies = [
  "itoap",
  "ryu",
@@ -979,9 +979,9 @@ dependencies = [
 
 [[package]]
 name = "sailfish-compiler"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7254ec7b3651f7f723a9073153f5dcddc1f2bf1bf8d1b23ac71c236ef6360d2b"
+checksum = "fb1e20f3effa597be23ecf359e35ced236172cb2b5c28e013555545fce87376d"
 dependencies = [
  "filetime",
  "home",
@@ -995,9 +995,9 @@ dependencies = [
 
 [[package]]
 name = "sailfish-macros"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00812289fe1891c191cc2d9db461352fc410619e07ec2bb748faaa06412619d0"
+checksum = "03f0b214190f10e8f5ff231014fc2369787f3254499bf37e07314fe4abfec9d9"
 dependencies = [
  "proc-macro2",
  "sailfish-compiler",
