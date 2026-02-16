@@ -1,11 +1,11 @@
 // build.rs
-// https://docs.rs/build-data/0.1.3/build_data/
 
-fn main() {
-    build_data::set_GIT_BRANCH();
-    build_data::set_GIT_COMMIT();
-    build_data::set_SOURCE_TIMESTAMP();
-    build_data::set_RUSTC_VERSION();
-    build_data::no_debug_rebuilds();
+fn main() -> anyhow::Result<()> {
+    let _ = build_data::set_GIT_BRANCH();
+    let _ = build_data::set_GIT_COMMIT();
+    let _ = build_data::set_SOURCE_TIMESTAMP();
+    let _ = build_data::set_RUSTC_VERSION();
+    let _ = build_data::no_debug_rebuilds();
+    Ok(())
 }
 // EOF

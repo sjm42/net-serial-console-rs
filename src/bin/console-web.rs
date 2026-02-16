@@ -10,7 +10,7 @@ use axum::{
     routing::*,
 };
 use clap::Parser;
-use sailfish::TemplateOnce;
+use sailfish::Template;
 use tokio::net;
 use tokio_util::codec::FramedRead;
 
@@ -20,7 +20,7 @@ const TEXT_HTML: &str = "text/html; charset=utf-8";
 const TEXT_PLAIN: &str = "text/plain; charset=utf-8";
 const TEXT_EVENT_STREAM: &str = "text/event-stream; charset=utf-8";
 
-#[derive(Clone, TemplateOnce)]
+#[derive(Clone, Template)]
 #[template(path = "console.html.stpl", escape = false)]
 struct ConsoleHtml {
     title: String,
@@ -57,7 +57,7 @@ async fn run_server(opts: OptsConsoleWeb) -> anyhow::Result<()> {
         title: "Console".into(),
         event_url: "/console/client".into(),
     };
-    let index_html = tmpl.render_once()?;
+    let index_html = tmpl.render()?;
     let ctx = AppCtx {
         connect: Arc::new(opts.connect),
         index: Arc::new(index_html),

@@ -1,22 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8">
   <title>
-    <%= &title %>
+    <%= &self.title %>
   </title>
 </head>
-
 <body>
   <h1>
-    <%= &title %>
+    <%= &self.title %>
   </h1>
   <pre>
   <div id="output" style="width: 95%; height: 800px; overflow-y: scroll;"> </div>
 </pre>
   <script>
-    var source = new EventSource('<%= event_url %>');
+    var source = new EventSource('<%= self.event_url %>');
     source.onmessage = function (e) {
       var o = document.getElementById("output");
       o.innerHTML += e.data + '<br>';
@@ -24,5 +22,4 @@
     };
   </script>
 </body>
-
 </html>
